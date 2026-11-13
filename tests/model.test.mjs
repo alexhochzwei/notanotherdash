@@ -123,3 +123,51 @@ test("Abfahrten aus Minuten und aus Zeitstempeln", () => {
   assert.equal(b[0].delay, 2);
   assert.deepEqual(departures({ attributes: {} }, now, 3), []);
 });
+
+import { lightInfo, coverInfo, coverGroup, coverText, climateModes, climateRange, snap, historyPoints, graphPaths, shortName } from "../custom_components/notanotherdash/frontend/lib/model.js";
+
+test("Licht: dimmbar, Helligkeit in Prozent", () => {
+  assert.deepEqual(lightInfo({ state: "on", attributes: { brightness: 128, supported_color_modes: ["brightness"] } }), { on: true, bri: 50, dimmable: true, unavailable: false });
+  assert.equal(lightInfo({ state: "on", attributes: { supported_color_modes: ["onoff"] } }).dimmable, false);
+  assert.equal(lightInfo(undefined).unavailable, true);
+});
+
+test("Rollläden: Gruppe mittelt, fährt wenn einer fährt", () => {
+  const a = { state: "open", attributes: { current_position: 40, supported_features: 15 } };
+  const b = { state: "closing", attributes: { current_position: 80, supported_features: 15 } };
+  const g = coverGroup([a, b]);
+  assert.equal(g.pos, 60);
+  assert.equal(g.closing, true);
+  assert.equal(g.settable, true);
+  assert.equal(coverText(g), "Fährt zu · 60 %");
+  assert.equal(coverInfo({ state: "open", attributes: { supported_features: 3 } }).settable, false);
+  assert.equal(coverText(coverInfo({ state: "closed", attributes: {} })), "Zu");
+});
+
+test("Heizung: Presets vor Betriebsarten, Raster", () => {
+  const c = { state: "heat", attributes: { preset_modes: ["comfort", "eco"], preset_mode: "eco", hvac_modes: ["heat", "off"] } };
+  assert.deepEqual(climateModes(c).map((m) => [m.label, m.on]), [["Komfort", false], ["Eco", true]]);
+  const d = { state: "heat", attributes: { hvac_modes: ["heat", "off"] } };
+  assert.deepEqual(climateModes(d).map((m) => m.label), ["Heizen", "Aus"]);
+  assert.deepEqual(climateRange({ attributes: { temperature: 21 } }), { min: 5, max: 30, step: 0.5, target: 21 });
+  assert.equal(snap(21.26, 0.5, 5, 30), 21.5);
+  assert.equal(snap(40, 0.5, 5, 30), 30);
+});
+
+test("Verlauf: kompakte Antwort, Attribut und Pfade", () => {
+  const p = historyPoints([{ s: "20.5", lu: 100 }, { s: "unavailable", lu: 200 }, { s: "21", lu: 300 }]);
+  assert.deepEqual(p, [[100000, 20.5], [300000, 21]]);
+  const q = historyPoints([{ s: "heat", a: { current_temperature: 19.5 }, lu: 50 }], "current_temperature");
+  assert.deepEqual(q, [[50000, 19.5]]);
+  const g = graphPaths(p, 21, 100000, 400000, 276, 250);
+  assert.ok(g.line.startsWith("M0.0 "));
+  assert.ok(g.target.startsWith("M0 "));
+  assert.equal(graphPaths([[1, 2]], null, 0, 1, 10, 10), null);
+});
+
+test("Kurzname ohne Raumpräfix", () => {
+  assert.equal(shortName("Wohnzimmer Deckenlicht", "Wohnzimmer"), "Deckenlicht");
+  assert.equal(shortName("Wohnzimmer – stehlampe", "Wohnzimmer"), "Stehlampe");
+  assert.equal(shortName("Wohnzimmer", "Wohnzimmer"), "Wohnzimmer");
+  assert.equal(shortName("Stehlampe", "Wohnzimmer"), "Stehlampe");
+});

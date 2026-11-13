@@ -5,6 +5,7 @@
 
 import { CSS, TINTS } from "./lib/styles.js";
 import { icon, weatherIcon } from "./lib/icons.js";
+import { RoomView } from "./lib/room.js";
 import {
   buildModel,
   roomEntities,
@@ -218,6 +219,11 @@ class NotAnotherDashPanel extends HTMLElement {
     this._renderChips();
     this._renderWeather();
     this._renderSide();
+    const open = this._roomView && this._roomView.room;
+    if (open) {
+      if (this._model.rooms[open.id]) this._roomView.refresh(this._model.rooms[open.id]);
+      else this._roomView.close();
+    }
   }
 
   _update() {
@@ -232,6 +238,8 @@ class NotAnotherDashPanel extends HTMLElement {
       }
     });
     Object.keys(dirty).forEach((rid) => this._renderTile(rid));
+    const open = this._roomView && this._roomView.room;
+    if (open && dirty[open.id]) this._roomView.refresh(this._model.rooms[open.id]);
     if (any) this._renderChips();
 
     const side = [this._weatherEntity(), this._settings.outdoor_temp_entity, this._settings.departures_entity];
@@ -278,7 +286,7 @@ class NotAnotherDashPanel extends HTMLElement {
       "<style>" +
       CSS +
       "</style>" +
-      '<div class="root">' +
+      '<div class="root" lang="de">' +
       '<div class="glow" aria-hidden="true"></div>' +
       '<header><div><div class="lbl date"></div><div class="clock"></div></div>' +
       '<div class="weather"></div><div class="chips"></div></header>' +
@@ -295,6 +303,7 @@ class NotAnotherDashPanel extends HTMLElement {
       '<svg class="ring" viewBox="0 0 58 58" aria-hidden="true"><circle cx="29" cy="29" r="27"></circle></svg>' +
       icon("gear", "gic") +
       "</button>" +
+      '<section class="roomsheet"></section>' +
       '<div class="toast" role="status"></div>' +
       '<section class="settings" aria-label="Einstellungen"></section>' +
       "</div>";
@@ -303,13 +312,23 @@ class NotAnotherDashPanel extends HTMLElement {
     const sr = this.shadowRoot;
     sr.querySelector(".rooms").addEventListener("click", (e) => {
       const t = e.target.closest ? e.target.closest(".tile") : null;
-      if (t) this._toast("Raumansicht folgt in Schritt 2");
+      if (t && this._model && this._model.rooms[t.getAttribute("data-room")]) this._roomView.open(this._model.rooms[t.getAttribute("data-room")]);
     });
     sr.querySelector("nav.dock").addEventListener("click", (e) => {
       const b = e.target.closest ? e.target.closest(".dockbtn") : null;
       if (b && !b.classList.contains("act")) this._toast(SOON);
     });
     this._bindGear(sr.querySelector(".gear"));
+    this._roomView = new RoomView({
+      el: sr.querySelector(".roomsheet"),
+      hass: () => this._hass,
+      toast: (text) => this._toast(text),
+      showGraph: () => this._settings.show_graph !== false,
+      floorName: (id) => {
+        const f = (this._reg && this._reg.floors ? this._reg.floors : []).filter((x) => x.floor_id === id)[0];
+        return f ? f.name : "";
+      }
+    });
   }
 
   _dockBtn(ic, label, active) {
@@ -551,7 +570,9 @@ class NotAnotherDashPanel extends HTMLElement {
         "</div></div>" +
         '<div class="row"><div class="t">Hintergrund-Farbton</div><div style="margin-left:auto;display:flex;gap:10px">' +
         Object.keys(TINTS).map((k) => '<button class="tint' + ((d.tint || "plum") === k ? " on" : "") + '" data-tint="' + k + '" aria-label="' + k + '" style="background:' + TINTS[k] + '"></button>').join("") +
-        "</div></div></div>";
+        "</div></div>" +
+        '<div class="row"><div class="t">Temperaturverlauf in der Heizungskarte</div><button class="sw' + (d.show_graph !== false ? " on" : "") + '" role="switch" aria-checked="' + (d.show_graph !== false) + '" aria-label="Temperaturverlauf anzeigen" data-flag="show_graph"></button></div>' +
+        "</div>";
     }
     const el = this._q(".settings");
     el.innerHTML =
@@ -565,6 +586,11 @@ class NotAnotherDashPanel extends HTMLElement {
     el.querySelectorAll("[data-seg] button").forEach((b) => (b.onclick = () => { d[b.parentNode.getAttribute("data-seg")] = parseInt(b.getAttribute("data-val"), 10); this._renderSettings(); }));
     el.querySelectorAll("[data-local] button").forEach((b) => (b.onclick = () => { local(b.parentNode.getAttribute("data-local"), b.getAttribute("data-val")); this._applyLook(); this._renderSettings(); }));
     el.querySelectorAll("[data-tint]").forEach((b) => (b.onclick = () => { d.tint = b.getAttribute("data-tint"); this._renderSettings(); }));
+    el.querySelectorAll(".sw[data-flag]").forEach((b) => (b.onclick = () => {
+      const k = b.getAttribute("data-flag");
+      d[k] = d[k] === false;
+      this._renderSettings();
+    }));
     el.querySelectorAll(".sw[data-room]").forEach((b) => (b.onclick = () => {
       const id = b.getAttribute("data-room");
       const list = (d.hidden_rooms = d.hidden_rooms || []);

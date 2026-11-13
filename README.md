@@ -6,9 +6,10 @@ Aufbau und Ideen angelehnt an [HausPanel](https://github.com/alpacalabs-de/hausp
 
 ## Stand
 
-Schritt 1: Übersicht mit Kopfzeile (Datum, Uhrzeit, Wetter, Status), Seitenleiste (Müllkalender, Abfahrten), Raumkacheln nach Stockwerken und Einstellungen (Zahnrad unten rechts gedrückt halten).
+- **Übersicht:** Kopfzeile (Datum, Uhrzeit, Wetter, Status), Seitenleiste (Müllkalender, Abfahrten), Raumkacheln nach Stockwerken, Einstellungen (Zahnrad unten rechts gedrückt halten).
+- **Raumansicht** (Raumkachel antippen): Szenen, Heizung mit Drehrad (Ziehen nach rechts = wärmer, gesendet beim Loslassen), Presets, einzelne Heizkörper, 24-h-Temperaturverlauf; Lichter (Tippen schaltet, seitlich Wischen dimmt); Rollläden hochkant (Ziehen stellt die Position ein, Gruppe antippen zeigt die einzelnen).
 
-Geplant: Raumansicht mit Steuerung, Panels für Klima, Licht, Kameras, Energie (mit Gas-Prognose aus Heizgradtagen) und Saugroboter.
+Geplant: Bildschirmschoner mit Bewegungsmelder, Panels für Klima, Licht, Kameras, Energie (mit Gas-Prognose aus Heizgradtagen) und Saugroboter.
 
 ## Installation
 
@@ -32,6 +33,7 @@ Danach: Einstellungen → Geräte & Dienste → Integration hinzufügen → „N
 - **Zuordnung:** Der Bereich der Entität gilt vor dem des Geräts.
 - **Ausblenden:** In HA versteckte oder deaktivierte Entitäten, Diagnose-/Konfigurations-Entitäten sowie alles mit dem Label **„Dashboard aus“** (`dashboard_aus`) – an Entität, Gerät oder Bereich. Ganze Räume lassen sich auch in den Einstellungen ausblenden.
 - **Raumtemperatur/-feuchte:** aus der Bereichseinstellung in HA; ohne Eintrag die Ist-Temperatur des Thermostats im Raum.
+- **Szenen** eines Raums: Szenen-Entitäten, die dem Bereich zugeordnet sind. **CO₂:** Sensoren mit Geräteklasse `carbon_dioxide`.
 - **Fenster:** `binary_sensor` mit Geräteklasse `window` oder `opening`. **Anwesenheit:** `motion`, `occupancy`, `presence`.
 
 ## Einstellungen

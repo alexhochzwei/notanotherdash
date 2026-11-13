@@ -42,7 +42,9 @@ export function buildModel(reg, settings, states) {
       climates: [],
       windows: [],
       presence: [],
-      cameras: []
+      cameras: [],
+      scenes: [],
+      co2: []
     };
   });
 
@@ -62,6 +64,8 @@ export function buildModel(reg, settings, states) {
     else if (domain === "cover") room.covers.push(id);
     else if (domain === "climate") room.climates.push(id);
     else if (domain === "camera") room.cameras.push(id);
+    else if (domain === "scene") room.scenes.push(id);
+    else if (domain === "sensor" && deviceClass === "carbon_dioxide") room.co2.push(id);
     else if (domain === "binary_sensor" && deviceClass) {
       if (WINDOW_CLASSES.indexOf(deviceClass) >= 0) room.windows.push(id);
       else if (PRESENCE_CLASSES.indexOf(deviceClass) >= 0) room.presence.push(id);
@@ -96,7 +100,7 @@ function floorRank(level) {
 
 /** Alle Entitäten, die eine Raumkachel braucht (für gezielte Aktualisierung). */
 export function roomEntities(room) {
-  const ids = [].concat(room.lights, room.covers, room.climates, room.windows, room.presence, room.cameras);
+  const ids = [].concat(room.lights, room.covers, room.climates, room.windows, room.presence, room.cameras, room.co2);
   if (room.tempSensor) ids.push(room.tempSensor);
   if (room.humSensor) ids.push(room.humSensor);
   return ids;
@@ -274,4 +278,124 @@ export function departures(stateObj, now, max) {
     })
     .filter((d) => d.minutes == null || d.minutes >= 0)
     .slice(0, max || 3);
+}
+
+// ---------- Raumansicht ----------
+
+export const COVER_SET_POSITION = 4;
+export const LIGHT_DIMMABLE_MODES = ["brightness", "color_temp", "hs", "xy", "rgb", "rgbw", "rgbww", "white"];
+
+export function lightInfo(s) {
+  const a = (s && s.attributes) || {};
+  const modes = a.supported_color_modes || [];
+  const dimmable = modes.some((m) => LIGHT_DIMMABLE_MODES.indexOf(m) >= 0);
+  const on = !!s && s.state === "on";
+  const bri = on && a.brightness != null ? Math.max(1, Math.round((a.brightness / 255) * 100)) : on ? 100 : 0;
+  return { on: on, bri: bri, dimmable: dimmable, unavailable: !s || s.state === "unavailable" };
+}
+
+export function coverInfo(s) {
+  const a = (s && s.attributes) || {};
+  const settable = !!((a.supported_features || 0) & COVER_SET_POSITION);
+  let pos = num(a.current_position);
+  if (pos == null) pos = s && (s.state === "open" || s.state === "opening") ? 100 : 0;
+  return {
+    pos: pos,
+    settable: settable,
+    opening: !!s && s.state === "opening",
+    closing: !!s && s.state === "closing"
+  };
+}
+
+/** Mehrere Rollläden als Gruppe: mittlere Position, fährt wenn einer fährt. */
+export function coverGroup(list) {
+  const infos = list.map(coverInfo);
+  const pos = infos.length ? Math.round(infos.reduce((a, i) => a + i.pos, 0) / infos.length) : 0;
+  return {
+    pos: pos,
+    settable: infos.length > 0 && infos.every((i) => i.settable),
+    opening: infos.some((i) => i.opening),
+    closing: infos.some((i) => i.closing)
+  };
+}
+
+export function coverText(g) {
+  if (g.opening) return "Fährt auf · " + g.pos + " %";
+  if (g.closing) return "Fährt zu · " + g.pos + " %";
+  return g.pos >= 100 ? "Offen" : g.pos <= 0 ? "Zu" : g.pos + " % offen";
+}
+
+const PRESETS = { comfort: "Komfort", eco: "Eco", away: "Abwesend", home: "Zuhause", boost: "Boost", sleep: "Schlafen", activity: "Aktiv", none: "Manuell" };
+const HVAC = { auto: "Auto", heat: "Heizen", cool: "Kühlen", heat_cool: "Auto", off: "Aus", dry: "Trocknen", fan_only: "Lüften" };
+
+/** Modus-Chips der Heizung: Presets, wenn das Thermostat welche hat, sonst Betriebsarten. */
+export function climateModes(s) {
+  const a = (s && s.attributes) || {};
+  if (Array.isArray(a.preset_modes) && a.preset_modes.length) {
+    return a.preset_modes.slice(0, 4).map((m) => ({ kind: "preset", value: m, label: PRESETS[m] || m, on: a.preset_mode === m }));
+  }
+  return (a.hvac_modes || []).filter((m) => HVAC[m]).slice(0, 4).map((m) => ({ kind: "hvac", value: m, label: HVAC[m], on: s.state === m }));
+}
+
+export function climateRange(s) {
+  const a = (s && s.attributes) || {};
+  return {
+    min: num(a.min_temp) != null ? num(a.min_temp) : 5,
+    max: num(a.max_temp) != null ? num(a.max_temp) : 30,
+    step: num(a.target_temp_step) || 0.5,
+    target: num(a.temperature)
+  };
+}
+
+export function snap(v, step, min, max) {
+  return Math.max(min, Math.min(max, Math.round(v / step) * step));
+}
+
+/** Verlauf aus history/history_during_period (kompakte oder volle Antwort) in [Zeit ms, Wert]. */
+export function historyPoints(rows, attr) {
+  return (rows || [])
+    .map((r) => {
+      const t = r.lu != null ? r.lu * 1000 : r.lc != null ? r.lc * 1000 : Date.parse(r.last_updated || r.last_changed);
+      const raw = attr ? (r.a || r.attributes || {})[attr] : r.s != null ? r.s : r.state;
+      return [t, num(raw)];
+    })
+    .filter((p) => p[1] != null && isFinite(p[0]));
+}
+
+/** Pfade für den Temperaturverlauf: Linie, Fläche und Sollwertlinie in einer W×H-Box. */
+export function graphPaths(points, target, start, end, W, H) {
+  if (points.length < 2) return null;
+  const vals = points.map((p) => p[1]).concat(target != null ? [target] : []);
+  let lo = Math.min.apply(null, vals) - 0.6;
+  let hi = Math.max.apply(null, vals) + 0.6;
+  const top = H * 0.16;
+  const bottom = H * 0.92;
+  const x = (t) => ((Math.max(start, t) - start) / (end - start)) * W;
+  const y = (v) => bottom - ((v - lo) / (hi - lo)) * (bottom - top);
+  const pts = points.map((p) => [x(p[0]), y(p[1])]);
+  pts.push([W, pts[pts.length - 1][1]]);
+  let line = "M" + pts[0][0].toFixed(1) + " " + pts[0][1].toFixed(1);
+  for (let i = 1; i < pts.length; i++) {
+    const p0 = pts[i - 1];
+    const p1 = pts[i];
+    const mx = ((p0[0] + p1[0]) / 2).toFixed(1);
+    line += " C" + mx + " " + p0[1].toFixed(1) + " " + mx + " " + p1[1].toFixed(1) + " " + p1[0].toFixed(1) + " " + p1[1].toFixed(1);
+  }
+  const ty = target != null ? y(target).toFixed(1) : null;
+  return {
+    line: line,
+    area: line + " L" + W + " " + H + " L0 " + H + " Z",
+    target: ty != null ? "M0 " + ty + " L" + W + " " + ty : ""
+  };
+}
+
+/** Kurzname eines Geräts im Raum: Raumname vorne abschneiden („Wohnzimmer Decke“ → „Decke“). */
+export function shortName(name, roomName) {
+  if (!name) return "";
+  const n = String(name);
+  if (roomName && n.toLowerCase().indexOf(roomName.toLowerCase()) === 0) {
+    const rest = n.slice(roomName.length).replace(/^[\s\-–:]+/, "");
+    if (rest) return rest.charAt(0).toUpperCase() + rest.slice(1);
+  }
+  return n;
 }
