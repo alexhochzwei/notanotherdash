@@ -1,0 +1,24 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Not Another Dash",
+        "description": "Adds the “Not Another Dash” panel to the sidebar. Rooms and floors come from your Home Assistant areas."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Not Another Dash is already set up."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Visibility",
+        "description": "When enabled, only administrators see the panel.",
+        "data": {
+          "admin_only": "Administrators only"
+        }
+      }
+    }
+  }
+}

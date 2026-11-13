@@ -1,0 +1,24 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Not Another Dash",
+        "description": "Fügt das Panel „Not Another Dash“ zur Seitenleiste hinzu. Räume und Stockwerke kommen aus deinen Bereichen in Home Assistant."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Not Another Dash ist bereits eingerichtet."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Sichtbarkeit",
+        "description": "Wenn aktiviert, sehen nur Administratoren das Panel.",
+        "data": {
+          "admin_only": "Nur für Administratoren"
+        }
+      }
+    }
+  }
+}

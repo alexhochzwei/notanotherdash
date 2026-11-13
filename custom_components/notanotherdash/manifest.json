@@ -1,0 +1,12 @@
+{
+  "domain": "notanotherdash",
+  "name": "Not Another Dash",
+  "codeowners": ["@alexhochzwei"],
+  "config_flow": true,
+  "dependencies": ["http", "frontend", "panel_custom", "websocket_api"],
+  "documentation": "https://github.com/alexhochzwei/notanotherdash",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/alexhochzwei/notanotherdash/issues",
+  "single_config_entry": true,
+  "version": "0.1.0"
+}
