@@ -276,7 +276,8 @@ class NotAnotherDashPanel extends HTMLElement {
     const root = this._q(".root");
     if (!root) return;
     root.classList.toggle("lite", lite);
-    this._q(".glow").style.background = TINTS[this._settings.tint] || TINTS.plum;
+    const tint = TINTS[this._settings.tint] || TINTS.plum;
+    this._q(".glow").style.background = "radial-gradient(closest-side, " + tint + " 0%, " + tint + " 96%, rgba(0,0,0,0) 100%)";
   }
 
   // ---------- Darstellung ----------

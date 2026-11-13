@@ -11,8 +11,9 @@ export const CSS = `
 button,select{font:inherit;color:inherit;-webkit-tap-highlight-color:transparent}
 .ic{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
 .root{position:relative;height:100%;min-height:100vh;overflow:hidden;background:var(--bg);display:flex;flex-direction:column}
-.glow{position:absolute;left:-200px;top:-260px;width:760px;height:620px;border-radius:50%;filter:blur(10px);opacity:.55;pointer-events:none}
-.lite .glow{filter:none;opacity:.35}
+/* Lichtschein als Verlauf statt filter:blur – blur erzeugt in WebKit rechteckige Kanten. */
+.glow{position:absolute;left:-200px;top:-260px;width:760px;height:620px;opacity:.55;pointer-events:none}
+.lite .glow{opacity:.35}
 .lbl{font-size:11px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:rgba(245,238,233,.6)}
 
 header{position:relative;display:flex;align-items:flex-end;gap:24px;padding:22px 24px 0;flex:none}
