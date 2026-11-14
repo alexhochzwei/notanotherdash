@@ -6,6 +6,8 @@
 import { CSS, TINTS } from "./lib/styles.js";
 import { icon, weatherIcon } from "./lib/icons.js";
 import { RoomView } from "./lib/room.js";
+import { EnergyView } from "./lib/energy.js";
+import { VacuumView } from "./lib/vacuum.js";
 import {
   buildModel,
   roomEntities,
@@ -224,6 +226,8 @@ class NotAnotherDashPanel extends HTMLElement {
       if (this._model.rooms[open.id]) this._roomView.refresh(this._model.rooms[open.id]);
       else this._roomView.close();
     }
+    const cv = this._views && this._views[this._view];
+    if (cv) cv.show();
   }
 
   _update() {
@@ -254,6 +258,7 @@ class NotAnotherDashPanel extends HTMLElement {
       this._renderWeather();
       this._renderSide();
     }
+    this._viewChanged(states);
   }
 
   _tick() {
@@ -292,13 +297,14 @@ class NotAnotherDashPanel extends HTMLElement {
       '<header><div><div class="lbl date"></div><div class="clock"></div></div>' +
       '<div class="weather"></div><div class="chips"></div></header>' +
       '<div class="body"><aside class="side" aria-label="Erinnerungen und Abfahrten"></aside><main class="rooms"></main></div>' +
+      '<section class="view" aria-live="polite"></section>' +
       '<nav class="dock" aria-label="Bereiche">' +
-      this._dockBtn("home", "Übersicht", true) +
+      this._dockBtn("home", "Übersicht", "home", true) +
       this._dockBtn("thermo", "Klima") +
       this._dockBtn("bulb", "Licht") +
       this._dockBtn("camera", "Kameras") +
-      this._dockBtn("bolt", "Energie") +
-      this._dockBtn("vacuum", "Sauger") +
+      this._dockBtn("bolt", "Energie", "energy") +
+      this._dockBtn("vacuum", "Sauger", "vacuum") +
       "</nav>" +
       '<button class="gear" aria-label="Einstellungen, gedrückt halten">' +
       '<svg class="ring" viewBox="0 0 58 58" aria-hidden="true"><circle cx="29" cy="29" r="27"></circle></svg>' +
@@ -317,7 +323,10 @@ class NotAnotherDashPanel extends HTMLElement {
     });
     sr.querySelector("nav.dock").addEventListener("click", (e) => {
       const b = e.target.closest ? e.target.closest(".dockbtn") : null;
-      if (b && !b.classList.contains("act")) this._toast(SOON);
+      if (!b || b.classList.contains("act")) return;
+      const view = b.getAttribute("data-view");
+      if (view) this._showView(view);
+      else this._toast(SOON);
     });
     this._bindGear(sr.querySelector(".gear"));
     this._roomView = new RoomView({
@@ -330,12 +339,62 @@ class NotAnotherDashPanel extends HTMLElement {
         return f ? f.name : "";
       }
     });
+    const viewEl = sr.querySelector(".view");
+    this._views = {
+      energy: new EnergyView({
+        el: viewEl,
+        hass: () => this._hass,
+        settings: () => this._settings,
+        forecast: () => this._forecast,
+        toast: (text) => this._toast(text)
+      }),
+      vacuum: new VacuumView({
+        el: viewEl,
+        hass: () => this._hass,
+        settings: () => this._settings,
+        reg: () => this._reg || {},
+        areas: () => ((this._reg && this._reg.areas) || []).slice().sort((a, b) => a.name.localeCompare(b.name, "de")),
+        toast: (text) => this._toast(text)
+      })
+    };
+    this._view = "home";
   }
 
-  _dockBtn(ic, label, active) {
+  _dockBtn(ic, label, view, active) {
     return (
-      '<button class="dockbtn' + (active ? " act" : "") + '"' + (active ? ' aria-current="page"' : "") + ">" + icon(ic) + esc(label) + "</button>"
+      '<button class="dockbtn' + (active ? " act" : "") + '"' + (view ? ' data-view="' + view + '"' : "") + (active ? ' aria-current="page"' : "") + ">" + icon(ic) + esc(label) + "</button>"
     );
+  }
+
+  _showView(view) {
+    const old = this._views[this._view];
+    if (old) old.hide();
+    this._view = view;
+    const root = this._q(".root");
+    root.classList.toggle("inview", view !== "home");
+    Array.prototype.forEach.call(this.shadowRoot.querySelectorAll(".dockbtn"), (b) => {
+      const on = (b.getAttribute("data-view") || "") === view;
+      b.classList.toggle("act", on);
+      if (on) b.setAttribute("aria-current", "page");
+      else b.removeAttribute("aria-current");
+    });
+    if (this._roomView && this._roomView.isOpen()) this._roomView.close();
+    const v = this._views[view];
+    if (v && this._hass && this._reg) v.show();
+  }
+
+  _viewChanged(states) {
+    const v = this._views && this._views[this._view];
+    if (!v) return;
+    const ids = this._view === "vacuum" ? v.watched() : [this._settings.power_entity].filter(Boolean);
+    let changed = false;
+    ids.forEach((id) => {
+      if (states[id] !== this._last["view:" + id]) {
+        this._last["view:" + id] = states[id];
+        changed = true;
+      }
+    });
+    if (changed) v.render();
   }
 
   _bindGear(btn) {
@@ -535,6 +594,7 @@ class NotAnotherDashPanel extends HTMLElement {
     const tabs = [
       ["side", "Kopfzeile & Leiste"],
       ["rooms", "Räume"],
+      ["energy", "Energie & Sauger"],
       ["look", "Darstellung"]
     ];
     let page = "";
@@ -562,6 +622,38 @@ class NotAnotherDashPanel extends HTMLElement {
           })
           .join("") +
         "</div>";
+    } else if (this._tab === "energy") {
+      const isTotal = (s) => s.attributes.state_class === "total_increasing" || s.attributes.state_class === "total";
+      const map = d.vacuum_rooms || {};
+      const robot = this._robotRooms;
+      page =
+        '<div class="group">' +
+        this._entRow("gas_entity", "Gaszähler", "Zählerstand (kWh oder m³) mit Langzeitstatistik", (id, s) => domainOf(id) === "sensor" && isTotal(s) && (s.attributes.device_class === "gas" || s.attributes.device_class === "energy")) +
+        this._entRow("electricity_entity", "Stromzähler", "Zählerstand in kWh", (id, s) => domainOf(id) === "sensor" && isTotal(s) && s.attributes.device_class === "energy") +
+        this._entRow("power_entity", "Aktuelle Leistung", "Strom jetzt in W", (id, s) => domainOf(id) === "sensor" && s.attributes.device_class === "power") +
+        '<div class="row"><div><div class="t">Heizgrenze</div><div class="d">Ab dieser Außentemperatur wird nicht mehr geheizt (Basis der Heizgradtage). Außentemperatur: siehe „Kopfzeile &amp; Leiste“</div></div><div class="seg" data-seg="hdd_base">' +
+        [12, 15, 18].map((n) => '<button data-val="' + n + '" class="' + ((d.hdd_base || 15) === n ? "on" : "") + '">' + n + "°</button>").join("") +
+        "</div></div></div>" +
+        '<div class="group">' +
+        this._entRow("vacuum_entity", "Saugroboter", "Roborock oder anderer Saugroboter", (id) => domainOf(id) === "vacuum") +
+        '<div class="row"><div><div class="t">Räume zuordnen</div><div class="d">Lädt die Räume aus der Roborock-Karte. Danach jedem Bereich seinen Roborock-Raum zuweisen.</div></div>' +
+        '<button class="scene" style="margin-left:auto" data-loadrooms="1">' + (robot ? "Neu laden" : "Räume laden") + "</button></div>" +
+        (robot === false ? '<div class="row"><div class="d">Räume konnten nicht geladen werden. Ist die Roborock-Integration eingerichtet und der Sauger ausgewählt?</div></div>' : "") +
+        (robot
+          ? (this._reg.areas || [])
+              .slice()
+              .sort((a, b) => a.name.localeCompare(b.name, "de"))
+              .map(
+                (a) =>
+                  '<div class="row"><div class="t">' + esc(a.name) + '</div><select class="ent" data-room-map="' + esc(a.area_id) + '"><option value="">– nicht zugeordnet –</option>' +
+                  robot.map((r) => '<option value="' + esc(r.id) + '"' + (String(map[a.area_id]) === String(r.id) ? " selected" : "") + ">" + esc(r.name) + " (" + esc(r.id) + ")</option>").join("") +
+                  "</select></div>"
+              )
+              .join("")
+          : Object.keys(map).length
+          ? '<div class="row"><div class="d">' + Object.keys(map).length + " Bereiche zugeordnet</div></div>"
+          : "") +
+        "</div>";
     } else {
       const lite = local("lite") || "auto";
       page =
@@ -587,6 +679,21 @@ class NotAnotherDashPanel extends HTMLElement {
     el.querySelectorAll("[data-seg] button").forEach((b) => (b.onclick = () => { d[b.parentNode.getAttribute("data-seg")] = parseInt(b.getAttribute("data-val"), 10); this._renderSettings(); }));
     el.querySelectorAll("[data-local] button").forEach((b) => (b.onclick = () => { local(b.parentNode.getAttribute("data-local"), b.getAttribute("data-val")); this._applyLook(); this._renderSettings(); }));
     el.querySelectorAll("[data-tint]").forEach((b) => (b.onclick = () => { d.tint = b.getAttribute("data-tint"); this._renderSettings(); }));
+    el.querySelectorAll("select[data-room-map]").forEach((s) => (s.onchange = () => {
+      const m = (d.vacuum_rooms = d.vacuum_rooms || {});
+      if (s.value) m[s.getAttribute("data-room-map")] = s.value;
+      else delete m[s.getAttribute("data-room-map")];
+    }));
+    el.querySelectorAll("[data-loadrooms]").forEach((b) => (b.onclick = async () => {
+      if (!d.vacuum_entity) {
+        this._toast("Erst den Saugroboter auswählen");
+        return;
+      }
+      b.textContent = "Lädt …";
+      const rooms = await this._views.vacuum.loadRobotRooms(d.vacuum_entity);
+      this._robotRooms = rooms && rooms.length ? rooms : false;
+      this._renderSettings();
+    }));
     el.querySelectorAll(".sw[data-flag]").forEach((b) => (b.onclick = () => {
       const k = b.getAttribute("data-flag");
       d[k] = d[k] === false;

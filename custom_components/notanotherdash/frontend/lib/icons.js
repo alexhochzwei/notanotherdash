@@ -28,7 +28,10 @@ const P = {
   chevl: '<path d="M15 6l-6 6 6 6"/>',
   up: '<path d="M6 15l6-6 6 6"/>',
   down: '<path d="M6 9l6 6 6-6"/>',
-  stopsq: '<rect x="7" y="7" width="10" height="10" rx="1.5"/>'
+  stopsq: '<rect x="7" y="7" width="10" height="10" rx="1.5"/>',
+  check: '<path d="M5 12l5 5 9-10"/>',
+  play: '<path d="M8 5l11 7-11 7z"/>',
+  pause: '<path d="M9 5v14M15 5v14"/>'
 };
 
 export function icon(name, cls) {

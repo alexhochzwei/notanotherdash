@@ -9,7 +9,18 @@ Aufbau und Ideen angelehnt an [HausPanel](https://github.com/alpacalabs-de/hausp
 - **Übersicht:** Kopfzeile (Datum, Uhrzeit, Wetter, Status), Seitenleiste (Müllkalender, Abfahrten), Raumkacheln nach Stockwerken, Einstellungen (Zahnrad unten rechts gedrückt halten).
 - **Raumansicht** (Raumkachel antippen): Szenen, Heizung mit Drehrad (Ziehen nach rechts = wärmer, gesendet beim Loslassen), Presets, einzelne Heizkörper, 24-h-Temperaturverlauf; Lichter (Tippen schaltet, seitlich Wischen dimmt); Rollläden hochkant (Ziehen stellt die Position ein, Gruppe antippen zeigt die einzelnen).
 
-Geplant: Bildschirmschoner mit Bewegungsmelder, Panels für Klima, Licht, Kameras, Energie (mit Gas-Prognose aus Heizgradtagen) und Saugroboter.
+- **Energie:** Gas pro Tag mit erwartetem Verbrauch aus der Außentemperatur (Heizgradtage, Ausgleichsgerade über die letzten 30 Tage), Monatssumme mit Abweichung, Prognose für 7 Tage aus der Wettervorhersage, Strom heute je Stunde und aktuelle Leistung. Daten aus den Langzeitstatistiken des Recorders.
+- **Sauger:** Status, Start/Pause/Station, Raumauswahl, Saugkraft, Wisch-Einstellungen (Select-Entitäten des Geräts) und Restlaufzeiten der Verschleißteile.
+
+Geplant: Panels für Klima, Licht und Kameras, zweite Ebene in der Raumansicht.
+
+### Energie einrichten
+
+Einstellungen → „Energie & Sauger“: Gaszähler und Stromzähler (Zählerstand mit `state_class: total_increasing`), aktuelle Leistung, Heizgrenze (Standard 15 °C). Die Außentemperatur kommt aus „Kopfzeile & Leiste“; sie braucht Langzeitstatistik (`state_class: measurement`). Ein Min/Max-Helfer hat das.
+
+### Roborock einrichten
+
+Einstellungen → „Energie & Sauger“: Saugroboter wählen, „Räume laden“ (ruft `roborock.get_maps` auf) und jedem Bereich seinen Roborock-Raum zuordnen. Gereinigt wird mit `vacuum.send_command` / `app_segment_clean`.
 
 ## Installation
 
