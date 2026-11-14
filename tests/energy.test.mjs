@@ -63,3 +63,26 @@ test("Restlaufzeit in Stunden", () => {
   assert.equal(hoursLeft({ state: "90", attributes: { unit_of_measurement: "min" } }), 1.5);
   assert.equal(hoursLeft({ state: "unknown", attributes: {} }), null);
 });
+
+import { calibrate, segmentList } from "../custom_components/notanotherdash/frontend/lib/vacuum.js";
+
+test("Kalibrierung Roborock → Bildpixel (Map-Card-Format)", () => {
+  const tf = calibrate([
+    { vacuum: { x: 25500, y: 25500 }, map: { x: 448, y: 976 } },
+    { vacuum: { x: 35500, y: 25500 }, map: { x: 1248, y: 976 } },
+    { vacuum: { x: 25500, y: 35500 }, map: { x: 448, y: 176 } }
+  ]);
+  const p = tf(30500, 30500);
+  assert.ok(Math.abs(p[0] - 848) < 1e-6 && Math.abs(p[1] - 576) < 1e-6);
+  assert.equal(calibrate([]), null);
+});
+
+test("Raumliste: Namen aus Bereichs-Zuordnung, sonst eigener Name oder Nummer", () => {
+  const segs = segmentList(
+    { rooms: { "16": { number: 16, name: "Unknown", x0: 1, y0: 2, x1: 3, y1: 4 }, "17": { number: 17, name: "Badezimmer" }, "18": { number: 18, name: "Unknown" } } },
+    { wohn: "16" },
+    [{ area_id: "wohn", name: "Wohnzimmer" }]
+  );
+  assert.deepEqual(segs.map((g) => [g.id, g.name]), [["17", "Badezimmer"], ["18", "Raum 18"], ["16", "Wohnzimmer"]]);
+  assert.deepEqual(segmentList(null, { wohn: "16" }, [{ area_id: "wohn", name: "Wohnzimmer" }]).map((g) => g.id), ["16"]);
+});

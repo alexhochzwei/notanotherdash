@@ -20,7 +20,9 @@ Einstellungen → „Energie & Sauger“: Gaszähler und Stromzähler (Zählerst
 
 ### Roborock einrichten
 
-Einstellungen → „Energie & Sauger“: Saugroboter wählen, „Räume laden“ (ruft `roborock.get_maps` auf) und jedem Bereich seinen Roborock-Raum zuordnen. Gereinigt wird mit `vacuum.send_command` / `app_segment_clean`.
+Für die interaktive Karte die Integration [Roborock Custom Map](https://github.com/Python-roborock/RoborockCustomMap) installieren (HACS, benutzerdefiniertes Repository). Sie liefert eine Bild-Entität (`image.…_custom`) mit Kalibrierungspunkten und Raumumrissen; das Dashboard findet sie automatisch und legt die Raumnamen auf die Karte. Antippen wählt Räume aus.
+
+Einstellungen → „Energie & Sauger“: Saugroboter wählen, „Räume laden“ (aus der Karte und `roborock.get_maps`) und jedem Bereich seinen Roborock-Raum zuordnen; daraus kommen die Namen auf der Karte. Gereinigt wird mit `vacuum.send_command` / `app_segment_clean`.
 
 ## Installation
 

@@ -239,4 +239,15 @@ select.ent{margin-left:auto;max-width:340px;height:38px;padding:0 12px;border-ra
 .mrow{display:flex;font-size:13.5px;color:rgba(245,238,233,.8);font-variant-numeric:tabular-nums}
 .mrow span:last-child{margin-left:auto}
 .mrow .low{color:#e0a03a}
+
+.vmapwrap{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.vmapbox{position:relative;display:inline-block;max-width:100%;line-height:0}
+.vimg{display:block;max-width:100%;max-height:540px;width:auto;height:auto}
+.vov{position:absolute;left:0;top:0;right:0;bottom:0}
+.vcrop{position:relative;overflow:hidden;max-width:100%}
+.vimg.crop{position:absolute;max-width:none;max-height:none;height:auto}
+.vsel{position:absolute;border-radius:6px;background:rgba(94,200,168,.18);border:1.5px solid rgba(94,200,168,.65);pointer-events:none}
+.vchip{position:absolute;-webkit-transform:translate(-50%,-50%);transform:translate(-50%,-50%);display:inline-flex;align-items:center;gap:4px;height:32px;padding:0 12px;border-radius:16px;border:1px solid rgba(255,255,255,.18);background:rgba(27,22,25,.85);color:var(--ink);font-size:13px;font-weight:500;line-height:1;white-space:nowrap;cursor:pointer}
+.vchip .ic{width:14px;height:14px;stroke-width:2.4}
+.vchip.on{background:#5ec8a8;border-color:#5ec8a8;color:#10201b}
 `;
