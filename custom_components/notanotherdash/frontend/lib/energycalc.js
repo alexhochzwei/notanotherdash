@@ -58,6 +58,49 @@ export function regression(rows) {
   return { base: base, slope: slope, r2: r2, n: n };
 }
 
+/**
+ * Robuste Regression: Tage ohne Verbrauch fliegen raus, dann einmal fitten,
+ * Ausreißer (Residuum > 2,5 σ) entfernen und neu fitten.
+ */
+export function robustRegression(rows) {
+  const pts = rows.filter((r) => r.hdd != null && r.gas != null && r.gas > 0);
+  const first = regression(pts);
+  if (!first) return null;
+  const res = pts.map((r) => r.gas - (first.base + first.slope * r.hdd));
+  const sd = Math.sqrt(res.reduce((a, v) => a + v * v, 0) / res.length);
+  if (!(sd > 0)) return Object.assign(first, { excluded: rows.length - pts.length });
+  const kept = pts.filter((r, i) => Math.abs(res[i]) <= 2.5 * sd);
+  const second = regression(kept) || first;
+  return Object.assign(second, { excluded: rows.length - (second === first ? pts.length : kept.length) });
+}
+
+/**
+ * Modell anpassen. Mit fester Heizgrenze wie gehabt; ohne (auto) wird die Heizgrenze
+ * zwischen 12 und 18 °C in 0,5er-Schritten so gewählt, dass R² am größten ist.
+ * Ergebnis: { model (mit baseT), rows } – rows mit hdd zur gewählten Heizgrenze.
+ */
+export function fitModel(gasStats, tempStats, base, before) {
+  const cands = base ? [base] : [];
+  if (!base) for (let b = 12; b <= 18.001; b += 0.5) cands.push(Math.round(b * 10) / 10);
+  // Heizgrenze nach R² der einfachen Regression wählen (Ausreißerfilter würde den Vergleich verzerren),
+  // das Modell selbst dann robust anpassen.
+  let best = null;
+  cands.forEach((b) => {
+    const rows = dailyRows(gasStats, tempStats, b);
+    const past = before != null ? rows.filter((r) => r.start < before) : rows;
+    const m = regression(past.filter((r) => r.gas > 0));
+    if (m && (!best || m.r2 > best.r2 + 1e-9)) best = { r2: m.r2, b: b, rows: rows, past: past };
+  });
+  if (best) {
+    const m = robustRegression(best.past);
+    if (m) best = { model: Object.assign(m, { baseT: best.b }), rows: best.rows };
+    else best = null;
+  }
+  if (best) return best;
+  const fallback = base || HDD_BASE;
+  return { model: null, rows: dailyRows(gasStats, tempStats, fallback), baseT: fallback };
+}
+
 export function expected(model, hddValue) {
   if (!model || hddValue == null) return null;
   return Math.max(0, model.base + model.slope * hddValue);

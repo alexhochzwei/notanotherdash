@@ -2,9 +2,10 @@
 // Daten aus den Langzeit-Statistiken des Recorders (keine eigene Speicherung).
 
 import { fmtNum } from "./model.js";
-import { dailyRows, regression, expected, forecastSum, monthTotals, sumChange, niceMax, barPath, hdd } from "./energycalc.js";
+import { fitModel, expected, forecastSum, monthTotals, sumChange, niceMax, barPath, hdd } from "./energycalc.js";
 
-const DAYS = 30;
+const DAYS = 365; // Lernfenster fürs Modell
+const CHART_DAYS = 30; // angezeigte Tage im Gasdiagramm
 const REFRESH_MS = 10 * 60000;
 
 function esc(s) {
@@ -92,7 +93,8 @@ export class EnergyView {
     this.loading = true;
     const now = Date.now();
     const gas = st.gas_entity;
-    const temp = st.outdoor_temp_entity;
+    // Energie kann einen eigenen Außensensor haben (z. B. solange ein neuer Helfer noch keine Historie hat).
+    const temp = st.energy_temp_entity || st.outdoor_temp_entity;
     const el = st.electricity_entity;
     const r = await Promise.all([
       this.stats(gas ? [gas] : [], "day", midnight(now, -DAYS), now, ["change"]),
@@ -124,12 +126,16 @@ export class EnergyView {
     const states = this.hass.states;
     const gasUnit = st.gas_entity && states[st.gas_entity] ? states[st.gas_entity].attributes.unit_of_measurement || "" : "";
     const d = this.data || { gas: [], temp: [], elToday: [], elYesterday: [] };
-    const base = st.hdd_base || 15;
-    const rows = dailyRows(d.gas, d.temp, base);
     const todayStart = midnight(Date.now());
+    // Heizgrenze: fest aus den Einstellungen oder (Standard) automatisch mit bestem R².
+    const fit = fitModel(d.gas, d.temp, st.hdd_base || null, todayStart);
+    const model = fit.model;
+    const base = model ? model.baseT : fit.baseT;
+    this.baseT = base;
+    const rows = fit.rows;
     const past = rows.filter((x) => x.start < todayStart);
     const today = rows.filter((x) => x.start >= todayStart)[0] || null;
-    const model = regression(past);
+    const chartRows = rows.filter((x) => x.start >= midnight(Date.now(), -CHART_DAYS));
     const month = monthTotals(rows, model, Date.now());
     const fc = forecastSum(model, this.host.forecast(), 7, base);
 
@@ -164,7 +170,7 @@ export class EnergyView {
       (st.power_entity ? kpi("Strom jetzt", power != null && isFinite(power) ? fmtNum(power, 0) : "–", powerUnit, "") : "") +
       "</div>" +
       (st.gas_entity
-        ? '<div class="erow"><div class="card echart">' + this.gasChart(rows, model, gasUnit) + "</div>" +
+        ? '<div class="erow"><div class="card echart">' + this.gasChart(chartRows, model, gasUnit) + "</div>" +
           '<div class="card escatter">' + this.scatter(past, model, gasUnit) + "</div></div>"
         : "") +
       '<div class="erow">' +
@@ -175,7 +181,7 @@ export class EnergyView {
           "</div>" + (fc && pr.gas != null ? '<div class="eur">~ ' + fmtNum(fc.sum * pr.gas, 0) + " €</div>" : "") + '<div class="cap">' + (fc ? "Aus Wettervorhersage, Ø " + fmtNum(fc.mean, 0) + "° außen" : "Braucht Wettervorhersage und 5 Tage Verlauf") + "</div></div>"
         : "") +
       "</div>";
-    this.bind(rows, model, gasUnit);
+    this.bind(chartRows, model, gasUnit);
   }
 
   gasChart(rows, model, unit) {
@@ -272,12 +278,13 @@ export class EnergyView {
       '<text class="tk" x="24" y="' + H + '">0</text><text class="tk" x="' + (W - 16) + '" y="' + H + '">' + maxX + "</text>" +
       (reg ? '<path d="' + reg + '" stroke="#f5eee9" stroke-opacity=".8" stroke-width="2" stroke-dasharray="5 5"/>' : "") +
       '<path d="' + (dots || "M0 0") + '" fill="#e0683a" stroke="#262024" stroke-width="2"/></svg>' +
-      '<div class="cap" style="text-align:right">Heizgradtage (' + (this.host.settings().hdd_base || 15) + " °C − Tagesmittel)</div>" +
+      '<div class="cap" style="text-align:right">Heizgradtage (' + fmtNum(this.baseT || 15, 1) + " °C − Tagesmittel)</div>" +
       '<div class="estats">' +
       (model
         ? '<div><span>Grundlast (Warmwasser)</span><span>' + fmtNum(model.base, 1) + " " + esc(unit) + "/Tag</span></div>" +
           "<div><span>Je Heizgradtag</span><span>" + fmtNum(model.slope, 1) + " " + esc(unit) + "</span></div>" +
-          "<div><span>Passgenauigkeit (R²)</span><span>" + fmtNum(model.r2, 2) + "</span></div>"
+          "<div><span>Heizgrenze" + (this.host.settings().hdd_base ? "" : " (gelernt)") + "</span><span>" + fmtNum(model.baseT, 1) + " °C</span></div>" +
+          "<div><span>Passgenauigkeit (R²)</span><span>" + fmtNum(model.r2, 2) + " · " + model.n + " Tage" + (model.excluded ? ", " + model.excluded + " ausgelassen" : "") + "</span></div>"
         : '<div class="cap">Für die Ausgleichsgerade braucht es mindestens 5 Tage mit Gas- und Temperaturwerten.</div>') +
       "</div>"
     );

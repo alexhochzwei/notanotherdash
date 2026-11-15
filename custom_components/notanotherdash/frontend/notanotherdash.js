@@ -689,8 +689,9 @@ class NotAnotherDashPanel extends HTMLElement {
         this._entRow("gas_entity", "Gaszähler", "Zählerstand (kWh oder m³) mit Langzeitstatistik", (id, s) => domainOf(id) === "sensor" && isTotal(s) && (s.attributes.device_class === "gas" || s.attributes.device_class === "energy")) +
         this._entRow("electricity_entity", "Stromzähler", "Zählerstand in kWh", (id, s) => domainOf(id) === "sensor" && isTotal(s) && s.attributes.device_class === "energy") +
         this._entRow("power_entity", "Aktuelle Leistung", "Strom jetzt in W", (id, s) => domainOf(id) === "sensor" && s.attributes.device_class === "power") +
-        '<div class="row"><div><div class="t">Heizgrenze</div><div class="d">Ab dieser Außentemperatur wird nicht mehr geheizt (Basis der Heizgradtage). Außentemperatur: siehe „Kopfzeile &amp; Leiste“</div></div><div class="seg" data-seg="hdd_base">' +
-        [12, 15, 18].map((n) => '<button data-val="' + n + '" class="' + ((d.hdd_base || 15) === n ? "on" : "") + '">' + n + "°</button>").join("") +
+        this._entRow("energy_temp_entity", "Außentemperatur für Energie", "Mit Langzeitstatistik. Leer = wie Kopfzeile", (id, s) => domainOf(id) === "sensor" && (s.attributes.device_class === "temperature" || s.attributes.unit_of_measurement === "°C")) +
+        '<div class="row"><div><div class="t">Heizgrenze</div><div class="d">Ab dieser Außentemperatur wird nicht mehr geheizt (Basis der Heizgradtage). Auto: aus dem Verlauf gelernt</div></div><div class="seg" data-seg="hdd_base">' +
+        [0, 12, 15, 18].map((n) => '<button data-val="' + n + '" class="' + ((d.hdd_base || 0) === n ? "on" : "") + '">' + (n ? n + "°" : "Auto") + "</button>").join("") +
         "</div></div></div>" +
         '<div class="group">' +
         this._entRow("vacuum_entity", "Saugroboter", "Roborock oder anderer Saugroboter", (id) => domainOf(id) === "vacuum") +

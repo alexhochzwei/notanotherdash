@@ -86,3 +86,32 @@ test("Raumliste: Namen aus Bereichs-Zuordnung, sonst eigener Name oder Nummer", 
   assert.deepEqual(segs.map((g) => [g.id, g.name]), [["17", "Badezimmer"], ["18", "Raum 18"], ["16", "Wohnzimmer"]]);
   assert.deepEqual(segmentList(null, { wohn: "16" }, [{ area_id: "wohn", name: "Wohnzimmer" }]).map((g) => g.id), ["16"]);
 });
+
+import { fitModel, robustRegression } from "../custom_components/notanotherdash/frontend/lib/energycalc.js";
+
+test("robustRegression ignoriert Ausreißer und Nulltage", () => {
+  const rows = [];
+  for (let i = 0; i < 30; i++) rows.push({ hdd: i % 12, gas: 10 + 3 * (i % 12) });
+  rows.push({ hdd: 5, gas: 200 }); // Ausreißer
+  rows.push({ hdd: 6, gas: 0 }); // Lücke
+  const m = robustRegression(rows);
+  assert.ok(Math.abs(m.slope - 3) < 0.01);
+  assert.ok(Math.abs(m.base - 10) < 0.05);
+  assert.equal(m.excluded, 2);
+});
+
+test("fitModel lernt die Heizgrenze", () => {
+  const day = 86400000;
+  const gas = [];
+  const temp = [];
+  for (let i = 0; i < 60; i++) {
+    const t = -2 + (i % 20);
+    const start = Date.UTC(2026, 0, 1) + i * day;
+    temp.push({ start: start, mean: t });
+    gas.push({ start: start, change: 8 + 2.5 * Math.max(0, 16 - t) });
+  }
+  const fit = fitModel(gas, temp, null);
+  assert.equal(fit.model.baseT, 16);
+  assert.ok(fit.model.r2 > 0.999);
+  assert.equal(fitModel(gas, temp, 15).model.baseT, 15);
+});
