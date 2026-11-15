@@ -11,6 +11,10 @@ const P = {
   thermo: '<path d="M10 14.5V5a2 2 0 1 1 4 0v9.5a4 4 0 1 1-4 0z"/>',
   bolt: '<path d="M13 3L5 14h6l-1 7 8-11h-6z"/>',
   vacuum: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3"/><path d="M12 3.5v3"/>',
+  leaf: '<path d="M5 19c0-8 5-13 14-14-1 9-6 14-14 14zM5 19l7-7"/>',
+  sack: '<path d="M8.5 8.5C6.5 10.5 5 13 5 16c0 3 2.5 5 7 5s7-2 7-5c0-3-1.5-5.5-3.5-7.5M8.5 8.5h7M9.5 8.5L8 4l4 2.2L16 4l-1.5 4.5"/>',
+  paper: '<path d="M5 4h11l3 3v13H5zM8 9h8M8 12.5h8M8 16h5"/>',
+  tree: '<path d="M12 3l-5 7h3l-4 6h12l-4-6h3zM12 16v5"/>',
   bin: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
   bus:
     '<path d="M7 3h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM5 11h14M8 21l1.5-4M16 21l-1.5-4"/>',

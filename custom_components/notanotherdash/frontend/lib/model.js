@@ -225,6 +225,16 @@ export function conditionText(c) {
 }
 
 /** Nächste Termine aus Kalenderereignissen: Titel plus „Heute“, „Morgen“ oder Wochentag. */
+/** Piktogramm zur Abfallart (nach dem Titel des Kalendereintrags). */
+export function wasteIcon(title) {
+  const t = String(title || "").toLowerCase();
+  if (/bio|kompost/.test(t)) return "leaf";
+  if (/gelb|wertstoff|verpackung|plastik/.test(t)) return "sack";
+  if (/papier|pappe|karton/.test(t)) return "paper";
+  if (/grün|gruen|baum|strauch|garten/.test(t)) return "tree";
+  return "bin";
+}
+
 export function wasteItems(events, now, max) {
   const today = new Date(now);
   today.setHours(0, 0, 0, 0);
@@ -249,7 +259,7 @@ export function wasteItems(events, now, max) {
           : diff < 7
           ? day.toLocaleDateString("de-DE", { weekday: "long" })
           : day.toLocaleDateString("de-DE", { day: "numeric", month: "short" });
-      return { title: x.title, when: when, soon: diff <= 1 };
+      return { title: x.title, when: when, soon: diff <= 1, icon: wasteIcon(x.title) };
     });
 }
 

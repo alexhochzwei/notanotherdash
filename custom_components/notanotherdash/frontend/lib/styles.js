@@ -29,11 +29,12 @@ header{position:relative;display:flex;align-items:flex-end;gap:24px;padding:22px
 .body{position:relative;flex:1;min-height:0;display:flex;gap:20px;padding:20px 24px 100px 20px}
 .side{width:264px;flex:none;padding:22px 20px;border-radius:30px;background:linear-gradient(170deg,rgba(255,255,255,.08),rgba(40,33,37,.55) 55%);border:1px solid var(--line);display:flex;flex-direction:column;gap:18px;overflow:hidden}
 .sep{height:1px;background:var(--line);flex:none}
-.rem{display:flex;align-items:center;gap:10px}
-.rem .badge{width:30px;height:30px;border-radius:10px;display:grid;place-items:center;flex:none;background:rgba(255,255,255,.08);color:rgba(245,238,233,.8)}
+.waste{display:flex;flex-direction:column;gap:5px}
+.rem{display:flex;align-items:center;gap:8px}
+.rem .badge{width:24px;height:24px;border-radius:8px;display:grid;place-items:center;flex:none;background:rgba(255,255,255,.08);color:rgba(245,238,233,.8)}
 .rem.soon .badge{background:rgba(250,204,21,.18);color:#fadb6a}
-.rem .ic{width:16px;height:16px}
-.rem .t{font-size:14.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rem .ic{width:14px;height:14px}
+.rem .t{font-size:13.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rem .s{margin-left:auto;font-size:13px;color:rgba(245,238,233,.62);white-space:nowrap}
 .stop{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500}
 .stop .ic{color:rgba(245,238,233,.6)}

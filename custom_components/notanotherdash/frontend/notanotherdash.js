@@ -563,12 +563,12 @@ class NotAnotherDashPanel extends HTMLElement {
     if (st.waste_calendar) {
       const items = wasteItems(this._waste, Date.now(), 3);
       html +=
-        '<div style="display:flex;flex-direction:column;gap:8px">' +
+        '<div class="waste">' +
         (items.length
           ? items
               .map(
                 (i) =>
-                  '<div class="rem' + (i.soon ? " soon" : "") + '"><span class="badge">' + icon("bin") + '</span><span class="t">' + esc(i.title) + '</span><span class="s">' + esc(i.when) + "</span></div>"
+                  '<div class="rem' + (i.soon ? " soon" : "") + '"><span class="badge">' + icon(i.icon) + '</span><span class="t">' + esc(i.title) + '</span><span class="s">' + esc(i.when) + "</span></div>"
               )
               .join("")
           : '<div class="empty">Keine Abholung in den nächsten zwei Wochen</div>') +
