@@ -8,6 +8,7 @@ import { icon, weatherIcon } from "./lib/icons.js";
 import { RoomView } from "./lib/room.js";
 import { EnergyView } from "./lib/energy.js";
 import { VacuumView } from "./lib/vacuum.js";
+import { ClimateView, LightView, CameraView } from "./lib/panels.js";
 import {
   buildModel,
   roomEntities,
@@ -17,6 +18,8 @@ import {
   conditionText,
   wasteItems,
   departures,
+  departuresMulti,
+  hasDepartures,
   domainOf
 } from "./lib/model.js";
 
@@ -36,6 +39,14 @@ function local(key, value) {
     return null;
   }
   return value;
+}
+
+const LINE_COLORS = { SUBWAY: "#6f9ff0", TRAM: "#f2a65a", BUS: "#e0786a", REGIONAL_RAIL: "#9fd38a", SUBURBAN: "#5ec8a8", RAIL: "#c9b6f2" };
+
+function lineColor(transport) {
+  const t = String(transport || "").toUpperCase();
+  for (const k in LINE_COLORS) if (t.indexOf(k) >= 0) return LINE_COLORS[k];
+  return "#f2a65a";
 }
 
 function oldIpad() {
@@ -246,7 +257,7 @@ class NotAnotherDashPanel extends HTMLElement {
     if (open && dirty[open.id]) this._roomView.refresh(this._model.rooms[open.id]);
     if (any) this._renderChips();
 
-    const side = [this._weatherEntity(), this._settings.outdoor_temp_entity, this._settings.departures_entity];
+    const side = [this._weatherEntity(), this._settings.outdoor_temp_entity].concat(this._depSource().ids);
     let sideDirty = false;
     side.forEach((eid) => {
       if (eid && states[eid] !== this._last["side:" + eid]) {
@@ -268,7 +279,7 @@ class NotAnotherDashPanel extends HTMLElement {
     el.textContent = now.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
     this._q(".date").textContent = now.toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" });
     // Abfahrten zählen Minuten herunter, auch ohne neuen Zustand.
-    if (this._settings.departures_entity) this._renderSide();
+    if (this._depSource().ids.length) this._renderSide();
   }
 
   _q(sel) {
@@ -300,9 +311,9 @@ class NotAnotherDashPanel extends HTMLElement {
       '<section class="view" aria-live="polite"></section>' +
       '<nav class="dock" aria-label="Bereiche">' +
       this._dockBtn("home", "Übersicht", "home", true) +
-      this._dockBtn("thermo", "Klima") +
-      this._dockBtn("bulb", "Licht") +
-      this._dockBtn("camera", "Kameras") +
+      this._dockBtn("thermo", "Klima", "climate") +
+      this._dockBtn("bulb", "Licht", "light") +
+      this._dockBtn("camera", "Kameras", "camera") +
       this._dockBtn("bolt", "Energie", "energy") +
       this._dockBtn("vacuum", "Sauger", "vacuum") +
       "</nav>" +
@@ -340,6 +351,16 @@ class NotAnotherDashPanel extends HTMLElement {
       }
     });
     const viewEl = sr.querySelector(".view");
+    const panelHost = {
+      el: viewEl,
+      hass: () => this._hass,
+      model: () => this._model,
+      settings: () => this._settings,
+      toast: (text) => this._toast(text),
+      openRoom: (id) => {
+        if (this._model && this._model.rooms[id]) this._roomView.open(this._model.rooms[id]);
+      }
+    };
     this._views = {
       energy: new EnergyView({
         el: viewEl,
@@ -348,6 +369,9 @@ class NotAnotherDashPanel extends HTMLElement {
         forecast: () => this._forecast,
         toast: (text) => this._toast(text)
       }),
+      climate: new ClimateView(panelHost),
+      light: new LightView(panelHost),
+      camera: new CameraView(panelHost),
       vacuum: new VacuumView({
         el: viewEl,
         hass: () => this._hass,
@@ -380,13 +404,14 @@ class NotAnotherDashPanel extends HTMLElement {
     });
     if (this._roomView && this._roomView.isOpen()) this._roomView.close();
     const v = this._views[view];
+    this._q(".view").scrollTop = 0;
     if (v && this._hass && this._reg) v.show();
   }
 
   _viewChanged(states) {
     const v = this._views && this._views[this._view];
     if (!v) return;
-    const ids = this._view === "vacuum" ? v.watched() : [this._settings.power_entity].filter(Boolean);
+    const ids = v.watched ? v.watched() : [];
     let changed = false;
     ids.forEach((id) => {
       if (states[id] !== this._last["view:" + id]) {
@@ -527,10 +552,11 @@ class NotAnotherDashPanel extends HTMLElement {
           : '<div class="empty">Keine Abholung in den nächsten zwei Wochen</div>') +
         "</div>";
     }
-    if (st.departures_entity) {
-      const so = this._hass.states[st.departures_entity];
-      const list = departures(so, Date.now(), st.departures_count || 3);
-      const name = so ? (so.attributes.friendly_name || st.departures_entity) : st.departures_entity;
+    const src = this._depSource();
+    if (src.ids.length) {
+      const now = Date.now();
+      const list = departuresMulti(src.ids.map((id) => this._hass.states[id]), now, st.departures_count || 3);
+      const name = src.name;
       if (html) html += '<div class="sep"></div>';
       html +=
         '<div style="display:flex;flex-direction:column;gap:11px"><div class="stop">' + icon("bus") + esc(name) + "</div>" +
@@ -538,8 +564,18 @@ class NotAnotherDashPanel extends HTMLElement {
           ? list
               .map(
                 (d) =>
-                  '<div class="dep"><span class="line">' + esc(d.line) + '</span><span class="to">' + esc(d.to) + '</span><span class="min' + (d.delay > 0 ? " late" : "") + '">' +
-                  (d.minutes == null ? "" : d.minutes < 1 ? "jetzt" : d.minutes + " Min.") + "</span></div>"
+                  '<div class="dep' + (d.cancelled ? " gone" : "") + '"><span class="line" style="background:' + lineColor(d.transport) + '">' + esc(d.line) + '</span><span class="to">' + esc(d.to) + '</span><span class="min' + (d.delay > 0 ? " late" : "") + '">' +
+                  (d.cancelled
+                    ? "fällt aus"
+                    : d.minutes == null
+                    ? ""
+                    : d.minutes < 1
+                    ? "jetzt"
+                    : d.minutes > 59
+                    ? new Date(d.at).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })
+                    : d.minutes + " Min.") +
+                  (d.delay > 0 && !d.cancelled ? " <small>+" + d.delay + "</small>" : "") +
+                  "</span></div>"
               )
               .join("")
           : '<div class="empty">Keine Abfahrten gefunden</div>') +
@@ -604,7 +640,7 @@ class NotAnotherDashPanel extends HTMLElement {
         this._entRow("weather_entity", "Wetter", "Kopfzeile; ohne Auswahl die erste Wetter-Entität", (id) => domainOf(id) === "weather") +
         this._entRow("outdoor_temp_entity", "Außentemperatur", "Ersetzt die Temperatur des Wetterdienstes", (id, s) => domainOf(id) === "sensor" && (s.attributes.device_class === "temperature" || s.attributes.unit_of_measurement === "°C")) +
         this._entRow("waste_calendar", "Müllkalender", "Termine der nächsten zwei Wochen", (id) => domainOf(id) === "calendar") +
-        this._entRow("departures_entity", "Abfahrten", "Sensor mit einer Abfahrtsliste", (id, s) => domainOf(id) === "sensor" && (Array.isArray(s.attributes.departures) || Array.isArray(s.attributes.next_departures) || Array.isArray(s.attributes.journeys))) +
+        this._depRow() +
         '<div class="row"><div><div class="t">Anzahl Abfahrten</div></div><div class="seg" data-seg="departures_count">' +
         [2, 3, 4].map((n) => '<button data-val="' + n + '" class="' + ((d.departures_count || 3) === n ? "on" : "") + '">' + n + "</button>").join("") +
         "</div></div></div>";
@@ -707,6 +743,51 @@ class NotAnotherDashPanel extends HTMLElement {
       else list.push(id);
       this._renderSettings();
     }));
+  }
+
+  /** Quelle der Abfahrten: ganze Haltestelle (Gerät) oder einzelner Sensor. */
+  _depSource() {
+    const st = this._settings || {};
+    const src = st.departures_source || (st.departures_entity ? "entity:" + st.departures_entity : "");
+    if (!src || !this._hass) return { ids: [], name: "" };
+    if (src.indexOf("device:") === 0) {
+      const dev = src.slice(7);
+      const d = ((this._reg && this._reg.devices) || []).filter((x) => x.id === dev)[0];
+      const ids = ((this._reg && this._reg.entities) || [])
+        .filter((e) => e.device_id === dev && !e.disabled_by && hasDepartures(this._hass.states[e.entity_id]))
+        .map((e) => e.entity_id);
+      return { ids: ids, name: d ? d.name_by_user || d.name : "Haltestelle" };
+    }
+    const id = src.slice(7);
+    const so = this._hass.states[id];
+    return { ids: [id], name: so ? so.attributes.friendly_name || id : id };
+  }
+
+  _depRow() {
+    const d = this._draft;
+    const cur = d.departures_source || (d.departures_entity ? "entity:" + d.departures_entity : "");
+    const states = this._hass.states;
+    const reg = this._reg || {};
+    const devs = {};
+    (reg.entities || []).forEach((e) => {
+      if (e.device_id && hasDepartures(states[e.entity_id])) devs[e.device_id] = (devs[e.device_id] || 0) + 1;
+    });
+    const devOpts = (reg.devices || [])
+      .filter((x) => devs[x.id])
+      .map((x) => '<option value="device:' + esc(x.id) + '"' + (cur === "device:" + x.id ? " selected" : "") + ">" + esc(x.name_by_user || x.name) + " (" + devs[x.id] + " Linien)</option>")
+      .join("");
+    const entOpts = Object.keys(states)
+      .filter((id) => domainOf(id) === "sensor" && hasDepartures(states[id]))
+      .sort()
+      .map((id) => '<option value="entity:' + esc(id) + '"' + (cur === "entity:" + id ? " selected" : "") + ">" + esc(states[id].attributes.friendly_name || id) + "</option>")
+      .join("");
+    return (
+      '<div class="row"><div><div class="t">Abfahrten</div><div class="d">Ganze Haltestelle (alle Linien) oder einzelne Linie</div></div>' +
+      '<select class="ent" data-key="departures_source" aria-label="Abfahrten"><option value="">– keine –</option>' +
+      (devOpts ? '<optgroup label="Haltestellen">' + devOpts + "</optgroup>" : "") +
+      (entOpts ? '<optgroup label="Einzelne Linien">' + entOpts + "</optgroup>" : "") +
+      "</select></div>"
+    );
   }
 
   _entRow(key, title, desc, filter) {

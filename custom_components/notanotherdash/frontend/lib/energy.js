@@ -43,6 +43,11 @@ export class EnergyView {
     this.timer = null;
   }
 
+  watched() {
+    const p = this.host.settings().power_entity;
+    return p ? [p] : [];
+  }
+
   async stats(ids, period, start, end, types) {
     if (!ids.length) return {};
     try {

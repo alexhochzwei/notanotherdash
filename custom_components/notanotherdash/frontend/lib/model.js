@@ -325,14 +325,14 @@ export function coverText(g) {
   return g.pos >= 100 ? "Offen" : g.pos <= 0 ? "Zu" : g.pos + " % offen";
 }
 
-const PRESETS = { comfort: "Komfort", eco: "Eco", away: "Abwesend", home: "Zuhause", boost: "Boost", sleep: "Schlafen", activity: "Aktiv", none: "Manuell" };
+const PRESETS = { comfort: "Komfort", eco: "Eco", frost: "Frostschutz", away: "Abwesend", home: "Zuhause", boost: "Boost", sleep: "Schlafen", activity: "Aktiv", none: "Manuell" };
 const HVAC = { auto: "Auto", heat: "Heizen", cool: "Kühlen", heat_cool: "Auto", off: "Aus", dry: "Trocknen", fan_only: "Lüften" };
 
 /** Modus-Chips der Heizung: Presets, wenn das Thermostat welche hat, sonst Betriebsarten. */
 export function climateModes(s) {
   const a = (s && s.attributes) || {};
   if (Array.isArray(a.preset_modes) && a.preset_modes.length) {
-    return a.preset_modes.slice(0, 4).map((m) => ({ kind: "preset", value: m, label: PRESETS[m] || m, on: a.preset_mode === m }));
+    return a.preset_modes.slice(0, 5).map((m) => ({ kind: "preset", value: m, label: PRESETS[m] || m, on: a.preset_mode === m }));
   }
   return (a.hvac_modes || []).filter((m) => HVAC[m]).slice(0, 4).map((m) => ({ kind: "hvac", value: m, label: HVAC[m], on: s.state === m }));
 }
@@ -398,4 +398,42 @@ export function shortName(name, roomName) {
     if (rest) return rest.charAt(0).toUpperCase() + rest.slice(1);
   }
   return n;
+}
+
+// ---------- Abfahrten (ha_departures: ein Sensor je Linie und Richtung) ----------
+
+/** Abfahrten aus mehreren Sensoren zusammenführen, nach nächster Abfahrt sortiert. */
+export function departuresMulti(stateObjs, now, max) {
+  const out = [];
+  (stateObjs || []).forEach((so) => {
+    if (!so || !so.attributes) return;
+    const a = so.attributes;
+    if (Array.isArray(a.times)) {
+      a.times.forEach((t) => {
+        const at = Date.parse(t.estimated || t.planned);
+        if (isNaN(at)) return;
+        out.push({
+          line: String(a.line_name || ""),
+          to: String(t.head_sign || a.direction || ""),
+          transport: a.transport || "",
+          at: at,
+          minutes: Math.round((at - now) / 60000),
+          delay: num(t.delay),
+          cancelled: !!t.cancelled
+        });
+      });
+    } else {
+      departures(so, now, 10).forEach((d) => out.push(Object.assign({ at: now + (d.minutes || 0) * 60000, transport: "", cancelled: false }, d)));
+    }
+  });
+  return out
+    .filter((d) => d.minutes == null || d.minutes >= 0)
+    .sort((x, y) => x.at - y.at)
+    .slice(0, max || 3);
+}
+
+/** Hat ein Zustand eine Abfahrtsliste, die das Dashboard lesen kann? */
+export function hasDepartures(so) {
+  const a = (so && so.attributes) || {};
+  return Array.isArray(a.times) || Array.isArray(a.departures) || Array.isArray(a.next_departures) || Array.isArray(a.journeys);
 }

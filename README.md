@@ -12,7 +12,11 @@ Aufbau und Ideen angelehnt an [HausPanel](https://github.com/alpacalabs-de/hausp
 - **Energie:** Gas pro Tag mit erwartetem Verbrauch aus der Außentemperatur (Heizgradtage, Ausgleichsgerade über die letzten 30 Tage), Monatssumme mit Abweichung, Prognose für 7 Tage aus der Wettervorhersage, Strom heute je Stunde und aktuelle Leistung. Daten aus den Langzeitstatistiken des Recorders.
 - **Sauger:** Status, Start/Pause/Station, Raumauswahl, Saugkraft, Wisch-Einstellungen (Select-Entitäten des Geräts) und Restlaufzeiten der Verschleißteile.
 
-Geplant: Panels für Klima, Licht und Kameras, zweite Ebene in der Raumansicht.
+- **Klima:** alle Räume mit Ist- und Solltemperatur, Status und Presets für alle Räume auf einmal.
+- **Licht:** alle Lichter nach Räumen (Tippen schaltet, Wischen dimmt), „Alle aus“.
+- **Kameras:** Standbilder (alle 10 s), Antippen für das Live-Bild.
+- **Zweite Ebene in der Raumansicht:** Pfeil in der Heizungskarte (jedes Thermostat einzeln, Betriebsart, Presets) und langes Drücken auf ein Licht (Helligkeit, Farbtemperatur, Farbe).
+- **Abfahrten:** ganze Haltestelle der Integration [ha_departures](https://github.com/alex-jung/ha-departures) (alle Linien zusammengeführt, Verspätung, Ausfälle) oder einzelne Sensoren.
 
 ### Energie einrichten
 
@@ -54,7 +58,7 @@ Danach: Einstellungen → Geräte & Dienste → Integration hinzufügen → „N
 Zahnrad unten rechts **gedrückt halten**. Gespeichert wird in Home Assistant (`.storage/notanotherdash.settings`) und gilt für alle Geräte; der Lite-Modus gilt nur für das jeweilige Gerät.
 
 - **Außentemperatur:** eigener Sensor statt Wetterdienst. Mehrere Sensoren am besten in HA mit einem Min/Max-Helfer (Typ „Minimum“) zusammenfassen.
-- **Abfahrten:** Sensor mit einer Liste im Attribut `departures`, `next_departures` oder `journeys` (Felder z. B. `line`, `direction`, `minutes` oder `departure`).
+- **Abfahrten:** Haltestelle (Gerät) der Integration ha_departures, deren Sensoren `line_name`, `direction` und `times` liefern; alternativ ein Sensor mit einer Liste in `departures`, `next_departures` oder `journeys`.
 
 ## Entwicklung
 

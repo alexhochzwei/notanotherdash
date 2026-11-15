@@ -19,6 +19,8 @@ import {
 } from "./model.js";
 
 const DRAG_START_PX = 8;
+const LONG_PRESS_MS = 550;
+const SWATCHES = [["Rot", 0, 85], ["Orange", 28, 90], ["Gelb", 48, 80], ["Grün", 120, 70], ["Türkis", 178, 70], ["Blau", 220, 80], ["Lila", 272, 70], ["Pink", 320, 65]];
 const DIAL = { cx: 138, cy: 400, r: 330, degPerK: 7, pxPerK: 40 };
 const HISTORY_HOURS = 24;
 
@@ -37,6 +39,8 @@ export class RoomView {
     this.pendingRender = false;
     this.history = null;
     this.pendingTarget = null; // {t, until}: gesendeter Sollwert, bis HA ihn bestätigt
+    this.detail = null; // zweite Ebene: {kind: "heat"} oder {kind: "light", id}
+    this.sliding = false;
   }
 
   get hass() {
@@ -48,6 +52,7 @@ export class RoomView {
     this.expanded = false;
     this.dialT = null;
     this.pendingTarget = null;
+    this.detail = null;
     this.history = null;
     this.host.el.classList.add("open");
     this.render();
@@ -68,7 +73,7 @@ export class RoomView {
   refresh(room) {
     if (!this.room) return;
     if (room) this.room = room;
-    if (this.gesture) {
+    if (this.gesture || this.sliding) {
       this.pendingRender = true;
       return;
     }
@@ -139,7 +144,9 @@ export class RoomView {
       '<div class="sbody' + (hasHeat ? "" : " noheat") + '">' +
       (hasHeat ? this.heatHtml(s) : "") +
       '<div class="sright">' + (right || (hasHeat ? "" : '<div class="empty">Keine steuerbaren Geräte in diesem Raum.</div>')) + "</div>" +
-      "</div></div>";
+      "</div>" +
+      (this.detail ? '<div class="dback" data-dclose="1"></div><div class="detail" role="dialog">' + this.detailHtml() + "</div>" : "") +
+      "</div>";
     this.bind();
   }
 
@@ -321,7 +328,8 @@ export class RoomView {
       this.call("light", "turn_off", { entity_id: this.room.lights });
       this.host.toast("Alles aus");
     }));
-    q("[data-more]").forEach((b) => (b.onclick = () => this.host.toast("Details folgen in einem späteren Schritt")));
+    q("[data-more]").forEach((b) => (b.onclick = () => this.openDetail({ kind: "heat" })));
+    if (this.detail) this.bindDetail(q);
     q("[data-mode]").forEach((b) => (b.onclick = () => {
       const v = b.getAttribute("data-mode").split(":");
       if (v[0] === "preset") this.call("climate", "set_preset_mode", { entity_id: this.room.climates, preset_mode: v[1] });
@@ -341,13 +349,23 @@ export class RoomView {
       try {
         btn.setPointerCapture(e.pointerId);
       } catch (err) {}
-      this.gesture = { kind: kind, id: id, axis: axis, x0: e.clientX, y0: e.clientY, rect: btn.getBoundingClientRect(), moved: false, value: null, el: btn };
+      const g = { kind: kind, id: id, axis: axis, x0: e.clientX, y0: e.clientY, rect: btn.getBoundingClientRect(), moved: false, value: null, el: btn };
+      this.gesture = g;
+      // Langes Drücken auf ein Licht öffnet die zweite Ebene.
+      if (kind === "light")
+        g.lp = setTimeout(() => {
+          if (this.gesture === g && !g.moved) {
+            this.gesture = null;
+            this.openDetail({ kind: "light", id: id });
+          }
+        }, LONG_PRESS_MS);
     });
     btn.addEventListener("pointermove", (e) => {
       const g = this.gesture;
       if (!g || g.el !== btn) return;
       const delta = axis === "y" ? e.clientY - g.y0 : e.clientX - g.x0;
       if (!g.moved && Math.abs(delta) < DRAG_START_PX) return;
+      clearTimeout(g.lp);
       if (kind === "light" && !btn.classList.contains("dim")) return;
       if (kind === "cover" && btn.classList.contains("fixed")) return;
       g.moved = true;
@@ -373,6 +391,7 @@ export class RoomView {
     const end = (cancel) => {
       const g = this.gesture;
       if (!g || g.el !== btn) return;
+      clearTimeout(g.lp);
       this.gesture = null;
       if (!cancel) {
         if (kind === "light") this.lightRelease(id, g);
@@ -459,7 +478,120 @@ export class RoomView {
     dial.addEventListener("pointerup", end);
     dial.addEventListener("pointercancel", end);
   }
+  // ---------- Zweite Ebene ----------
+
+  openDetail(d) {
+    this.detail = d;
+    this.render();
+  }
+
+  detailHtml() {
+    const d = this.detail;
+    const states = this.hass.states;
+    const head = (title, sub) =>
+      '<div class="dhead"><div><div class="dtitle">' + esc(title) + '</div><div class="cap">' + sub + '</div></div><button class="round" data-dclose="1" aria-label="Zurück">' + icon("close") + "</button></div>";
+    if (d.kind === "light") {
+      const st = states[d.id];
+      if (!st) return head("Licht", "Nicht gefunden");
+      const a = st.attributes;
+      const li = lightInfo(st);
+      const modes = a.supported_color_modes || [];
+      const ct = modes.indexOf("color_temp") >= 0;
+      const color = modes.some((m) => ["hs", "xy", "rgb", "rgbw", "rgbww"].indexOf(m) >= 0);
+      const minK = a.min_color_temp_kelvin || 2000;
+      const maxK = a.max_color_temp_kelvin || 6500;
+      const k = a.color_temp_kelvin || Math.round((minK + maxK) / 2);
+      return (
+        head(shortName(a.friendly_name || d.id, this.room.name), li.on ? "An" + (li.dimmable ? " · " + li.bri + " %" : "") : "Aus") +
+        '<div class="drow"><span>Ein / Aus</span><button class="sw' + (li.on ? " on" : "") + '" role="switch" aria-checked="' + li.on + '" data-dtoggle="' + esc(d.id) + '" aria-label="Ein oder aus"></button></div>' +
+        (li.dimmable
+          ? '<div class="dslider"><div class="drow"><span>Helligkeit</span><span class="dval" data-out="bri">' + (li.on ? li.bri : 0) + ' %</span></div><input type="range" min="1" max="100" value="' + (li.on ? li.bri : 50) + '" data-dbri="' + esc(d.id) + '"></div>'
+          : "") +
+        (ct
+          ? '<div class="dslider"><div class="drow"><span>Farbtemperatur</span><span class="dval" data-out="ct">' + k + ' K</span></div><input class="ctrange" type="range" min="' + minK + '" max="' + maxK + '" step="50" value="' + k + '" data-dct="' + esc(d.id) + '"></div>'
+          : "") +
+        (color
+          ? '<div class="drow"><span>Farbe</span></div><div class="swatches">' +
+            SWATCHES.map((c) => '<button class="swatch" style="background:hsl(' + c[1] + "," + c[2] + '%,60%)" data-hs="' + c[1] + "," + c[2] + '" aria-label="' + c[0] + '"></button>').join("") +
+            "</div>"
+          : "") +
+        (!li.dimmable && !ct && !color ? '<div class="cap">Dieses Licht kann nur ein- und ausgeschaltet werden.</div>' : "")
+      );
+    }
+    // Heizung: jedes Thermostat einzeln, mit allen Betriebsarten und Presets.
+    return (
+      head("Heizung", this.room.climates.length > 1 ? this.room.climates.length + " Thermostate" : "Alle Einstellungen") +
+      this.room.climates
+        .map((id) => {
+          const c = states[id];
+          if (!c) return "";
+          const a = c.attributes;
+          const r = climateRange(c);
+          const hvac = (a.hvac_modes || []).map((m) => '<button class="mode' + (c.state === m ? " act" : "") + '" data-dhvac="' + esc(id) + "|" + esc(m) + '">' + esc(HVAC_LABEL[m] || m) + "</button>").join("");
+          const pre = (a.preset_modes || []).map((m) => '<button class="mode' + (a.preset_mode === m ? " act" : "") + '" data-dpreset="' + esc(id) + "|" + esc(m) + '">' + esc(PRESET_LABEL[m] || m) + "</button>").join("");
+          return (
+            '<div class="dclimate"><div class="drow"><span class="dname">' + esc(shortName(a.friendly_name || id, this.room.name)) + "</span>" +
+            '<span class="cap">Ist ' + (a.current_temperature != null ? fmtNum(a.current_temperature, 1) + "°" : "–") + (a.hvac_action === "heating" ? ' · <span class="hot">heizt</span>' : "") + "</span></div>" +
+            '<div class="cset"><button class="round" data-dstep="' + esc(id) + '|-1" aria-label="Kälter">' + icon("chevl") + '</button><div class="ctarget"><span>Soll</span>' +
+            (r.target != null ? fmtNum(r.target, 1) + "°" : "–") + '</div><button class="round" data-dstep="' + esc(id) + '|1" aria-label="Wärmer">' + icon("chev") + "</button></div>" +
+            (hvac ? '<div class="dlabel">Betriebsart</div><div class="modes left">' + hvac + "</div>" : "") +
+            (pre ? '<div class="dlabel">Preset</div><div class="modes left">' + pre + "</div>" : "") +
+            "</div>"
+          );
+        })
+        .join("")
+    );
+  }
+
+  bindDetail(q) {
+    const states = this.hass.states;
+    q("[data-dclose]").forEach((b) => (b.onclick = () => {
+      this.detail = null;
+      this.render();
+    }));
+    q("[data-dtoggle]").forEach((b) => (b.onclick = () => this.call("light", "toggle", { entity_id: b.getAttribute("data-dtoggle") })));
+    const slide = (input, out, fmt, send) => {
+      const start = () => (this.sliding = true);
+      input.addEventListener("pointerdown", start);
+      input.addEventListener("touchstart", start);
+      input.addEventListener("input", () => {
+        const o = this.host.el.querySelector('[data-out="' + out + '"]');
+        if (o) o.textContent = fmt(input.value);
+      });
+      input.addEventListener("change", () => {
+        this.sliding = false;
+        send(parseInt(input.value, 10));
+        if (this.pendingRender) this.render();
+      });
+    };
+    q("[data-dbri]").forEach((i) => slide(i, "bri", (v) => v + " %", (v) => this.call("light", "turn_on", { entity_id: i.getAttribute("data-dbri"), brightness_pct: v })));
+    q("[data-dct]").forEach((i) => slide(i, "ct", (v) => v + " K", (v) => this.call("light", "turn_on", { entity_id: i.getAttribute("data-dct"), color_temp_kelvin: v })));
+    q("[data-hs]").forEach((b) => (b.onclick = () => {
+      const hs = b.getAttribute("data-hs").split(",").map(Number);
+      this.call("light", "turn_on", { entity_id: this.detail.id, hs_color: hs });
+      this.host.toast(b.getAttribute("aria-label"));
+    }));
+    q("[data-dhvac]").forEach((b) => (b.onclick = () => {
+      const v = b.getAttribute("data-dhvac").split("|");
+      this.call("climate", "set_hvac_mode", { entity_id: v[0], hvac_mode: v[1] });
+    }));
+    q("[data-dpreset]").forEach((b) => (b.onclick = () => {
+      const v = b.getAttribute("data-dpreset").split("|");
+      this.call("climate", "set_preset_mode", { entity_id: v[0], preset_mode: v[1] });
+    }));
+    q("[data-dstep]").forEach((b) => (b.onclick = () => {
+      const v = b.getAttribute("data-dstep").split("|");
+      const c = states[v[0]];
+      const r = climateRange(c);
+      const t = snap((r.target != null ? r.target : 20) + parseInt(v[1], 10) * r.step, r.step, r.min, r.max);
+      this.call("climate", "set_temperature", { entity_id: v[0], temperature: t });
+      this.host.toast("Soll " + fmtNum(t, 1) + "°");
+    }));
+  }
 }
+
+const HVAC_LABEL = { auto: "Auto", heat: "Heizen", cool: "Kühlen", heat_cool: "Auto", off: "Aus", sleep: "Schlafen", dry: "Trocknen", fan_only: "Lüften" };
+const PRESET_LABEL = { none: "Manuell", comfort: "Komfort", eco: "Eco", frost: "Frostschutz", boost: "Boost", away: "Abwesend", home: "Zuhause", sleep: "Schlafen", activity: "Aktiv" };
 
 function btnName(el) {
   return (el && el.getAttribute("aria-label")) || "";

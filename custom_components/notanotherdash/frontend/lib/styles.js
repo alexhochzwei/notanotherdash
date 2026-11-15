@@ -42,6 +42,9 @@ header{position:relative;display:flex;align-items:flex-end;gap:24px;padding:22px
 .dep .to{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:rgba(245,238,233,.85)}
 .dep .min{font-weight:500}
 .dep .late{color:#ffb08a}
+.dep .min small{font-size:11px;font-weight:500}
+.dep.gone .to,.dep.gone .line{opacity:.45;text-decoration:line-through}
+.dep.gone .min{color:#ff8f8f}
 .empty{font-size:13px;color:var(--ink3)}
 
 .rooms{flex:1;min-width:0;overflow-y:auto;-webkit-overflow-scrolling:touch;display:flex;flex-direction:column;gap:16px;padding-bottom:8px}
@@ -250,4 +253,50 @@ select.ent{margin-left:auto;max-width:340px;height:38px;padding:0 12px;border-ra
 .vchip{position:absolute;-webkit-transform:translate(-50%,-50%);transform:translate(-50%,-50%);display:inline-flex;align-items:center;gap:4px;height:32px;padding:0 12px;border-radius:16px;border:1px solid rgba(255,255,255,.18);background:rgba(27,22,25,.85);color:var(--ink);font-size:13px;font-weight:500;line-height:1;white-space:nowrap;cursor:pointer}
 .vchip .ic{width:14px;height:14px;stroke-width:2.4}
 .vchip.on{background:#5ec8a8;border-color:#5ec8a8;color:#10201b}
+
+/* ---------- Panels Klima, Licht, Kameras ---------- */
+.phead{display:flex;align-items:flex-end;gap:16px;margin-bottom:16px}
+.ptitle{font-size:28px;font-weight:500;letter-spacing:-.01em}
+.pacts{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.cname{display:inline-flex;align-items:center;gap:4px;border:0;background:none;padding:0;font-size:16px;font-weight:500;cursor:pointer;text-align:left}
+.cname .ic{width:16px;height:16px;color:var(--ink3)}
+.cgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.ccard{display:flex;flex-direction:column;gap:6px;background:linear-gradient(170deg,rgba(255,255,255,.06),rgba(255,255,255,.03) 60%)!important}
+.ccard.hot{background:linear-gradient(170deg,rgba(255,143,92,.16),rgba(255,255,255,.04) 60%)!important;border-color:rgba(255,143,92,.3)!important}
+.cnow{font-size:40px;font-weight:300;letter-spacing:-.02em;line-height:1.05;font-variant-numeric:tabular-nums}
+.cstate{font-size:13px;color:var(--ink2);min-height:17px}
+.cset{display:flex;align-items:center;gap:8px;margin-top:6px}
+.ctarget{flex:1;text-align:center;font-size:20px;font-weight:500;font-variant-numeric:tabular-nums}
+.ctarget span{display:block;font-size:11px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--ink3)}
+.lroom{display:flex;flex-direction:column;gap:10px;margin-bottom:18px}
+.lt.na{opacity:.5}
+.camgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.card.cam{padding:0;overflow:hidden;cursor:pointer;text-align:left;aspect-ratio:16/9;position:relative}
+.cam img{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;background:#111}
+.camname{position:absolute;left:12px;bottom:10px;padding:6px 10px;border-radius:10px;background:rgba(0,0,0,.55);font-size:13px;font-weight:500}
+.camlive{position:absolute;left:0;top:0;right:0;bottom:0;background:#000;border-radius:24px;overflow:hidden;z-index:3;display:flex;align-items:center;justify-content:center}
+.camlive img{max-width:100%;max-height:100%}
+.camlive .round{position:absolute;right:14px;top:14px}
+
+/* ---------- Zweite Ebene (Raumansicht) ---------- */
+.dback{position:absolute;left:0;top:0;right:0;bottom:0;background:rgba(15,12,14,.6);z-index:5}
+.detail{position:absolute;left:50%;top:50%;-webkit-transform:translate(-50%,-50%);transform:translate(-50%,-50%);width:460px;max-width:92%;max-height:88%;overflow-y:auto;-webkit-overflow-scrolling:touch;z-index:6;padding:20px 22px 22px;border-radius:26px;background:#2a2327;border:1px solid rgba(255,255,255,.1);box-shadow:0 20px 50px rgba(0,0,0,.5);display:flex;flex-direction:column;gap:14px}
+.lite .detail{box-shadow:none}
+.dhead{display:flex;align-items:flex-start;gap:12px}
+.dhead .round{margin-left:auto}
+.dtitle{font-size:22px;font-weight:500}
+.drow{display:flex;align-items:center;gap:10px;font-size:15px;font-weight:500}
+.drow .sw,.drow .dval,.drow .cap{margin-left:auto}
+.dval{font-size:14px;color:var(--ink2);font-variant-numeric:tabular-nums}
+.dslider{display:flex;flex-direction:column;gap:10px}
+.detail input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:36px;border-radius:18px;background:rgba(255,255,255,.1);outline:none;margin:0}
+.detail input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:30px;height:30px;border-radius:50%;background:var(--ink);box-shadow:0 2px 8px rgba(0,0,0,.4);border:0}
+.detail input.ctrange{background:linear-gradient(90deg,#ffb35c,#fff3e0 50%,#cfe3ff)}
+.swatches{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:8px}
+.swatch{height:40px;border-radius:12px;border:2px solid rgba(255,255,255,.12);cursor:pointer}
+.dclimate{display:flex;flex-direction:column;gap:8px;padding-top:12px;border-top:1px solid var(--line)}
+.dclimate:first-of-type{border-top:0;padding-top:0}
+.dname{font-size:16px;font-weight:500}
+.dlabel{font-size:11px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--ink3);margin-top:4px}
+.modes.left{justify-content:flex-start}
 `;

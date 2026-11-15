@@ -171,3 +171,19 @@ test("Kurzname ohne Raumpräfix", () => {
   assert.equal(shortName("Wohnzimmer", "Wohnzimmer"), "Wohnzimmer");
   assert.equal(shortName("Stehlampe", "Wohnzimmer"), "Stehlampe");
 });
+
+import { departuresMulti, hasDepartures } from "../custom_components/notanotherdash/frontend/lib/model.js";
+
+test("Abfahrten aus ha_departures: mehrere Linien, sortiert, Verspätung, Ausfall", () => {
+  const now = Date.parse("2026-11-15T04:00:00+01:00");
+  const u5 = { attributes: { line_name: "U5", direction: "Killesberg", transport: "SUBWAY", times: [
+    { planned: "2026-11-14T23:27:00+01:00", estimated: "2026-11-14T23:30:00+01:00", delay: 3 },
+    { planned: "2026-11-15T04:03:00+01:00", estimated: "2026-11-15T04:05:00+01:00", delay: 2, head_sign: "Killesberg" },
+    { planned: "2026-11-15T04:33:00+01:00", estimated: "2026-11-15T04:33:00+01:00", delay: null, cancelled: true }
+  ] } };
+  const u12 = { attributes: { line_name: "U12", direction: "Remseck", transport: "SUBWAY", times: [{ planned: "2026-11-15T04:28:00+01:00", estimated: "2026-11-15T04:28:00+01:00", delay: null }] } };
+  const list = departuresMulti([u5, u12, undefined], now, 3);
+  assert.deepEqual(list.map((d) => [d.line, d.minutes, d.delay, d.cancelled]), [["U5", 5, 2, false], ["U12", 28, null, false], ["U5", 33, null, true]]);
+  assert.equal(hasDepartures(u5), true);
+  assert.equal(hasDepartures({ attributes: {} }), false);
+});
