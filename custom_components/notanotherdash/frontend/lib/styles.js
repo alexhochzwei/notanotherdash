@@ -37,8 +37,10 @@ header{position:relative;display:flex;align-items:flex-end;gap:24px;padding:22px
 .rem .s{margin-left:auto;font-size:13px;color:rgba(245,238,233,.62);white-space:nowrap}
 .stop{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500}
 .stop .ic{color:rgba(245,238,233,.6)}
-.dep{display:grid;grid-template-columns:44px minmax(0,1fr) auto;align-items:center;gap:10px;font-size:14px;font-variant-numeric:tabular-nums}
-.line{height:24px;border-radius:7px;display:grid;place-items:center;font-size:12.5px;font-weight:600;color:#141012;background:var(--light);overflow:hidden;padding:0 3px;white-space:nowrap}
+.deps{display:flex;flex-direction:column;gap:6px}
+.deps .stop{margin-bottom:2px}
+.dep{display:grid;grid-template-columns:40px minmax(0,1fr) auto;align-items:center;gap:9px;font-size:13.5px;line-height:1.2;font-variant-numeric:tabular-nums}
+.line{height:20px;border-radius:6px;display:grid;place-items:center;font-size:12.5px;font-weight:600;color:#141012;background:var(--light);overflow:hidden;padding:0 3px;white-space:nowrap}
 .dep .to{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:rgba(245,238,233,.85)}
 .dep .min{font-weight:500}
 .dep .late{color:#ffb08a}
@@ -54,7 +56,12 @@ header{position:relative;display:flex;align-items:flex-end;gap:24px;padding:22px
 .tile:active{transform:scale(.97)}
 .tile.on{background:linear-gradient(160deg,rgba(242,166,90,.16),rgba(255,255,255,.05) 60%);border-color:rgba(242,166,90,.28)}
 .tname{font-size:18px;font-weight:500;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tsub{font-size:13.5px;color:var(--ink2);font-variant-numeric:tabular-nums;margin-top:2px;min-height:17px}
+.tsub{display:flex;align-items:center;font-size:13.5px;color:var(--ink2);font-variant-numeric:tabular-nums;margin-top:2px;min-height:17px;white-space:nowrap}
+.theat{display:inline-flex;margin-right:4px;color:rgba(245,238,233,.35)}
+.theat .ic{width:14px;height:14px}
+.theat.on{color:var(--heat)}
+.tsub .tgt{color:var(--ink3)}
+.tsub .dot{margin:0 5px}
 .pills{display:flex;gap:5px;flex-wrap:nowrap;overflow:hidden}
 .pill{display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 8px 0 6px;border-radius:13px;background:rgba(255,255,255,.07);font-size:12.5px;font-weight:500;color:rgba(245,238,233,.8);font-variant-numeric:tabular-nums;white-space:nowrap;flex:none}
 .pill .ic{width:15px;height:15px}
@@ -116,7 +123,7 @@ select.ent{margin-left:auto;max-width:340px;height:38px;padding:0 12px;border-ra
 .scenes{margin-left:auto;display:flex;gap:8px;overflow:hidden}
 .scene{height:40px;padding:0 16px;border-radius:20px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.06);font-size:14px;font-weight:500;cursor:pointer;white-space:nowrap}
 .scene:active{transform:scale(.96)}
-.round{width:44px;height:44px;border-radius:50%;border:0;background:rgba(255,255,255,.09);display:inline-grid;place-items:center;cursor:pointer;flex:none}
+.round{width:44px;height:44px;padding:0;line-height:0;border-radius:50%;border:0;background:rgba(255,255,255,.09);display:inline-grid;place-items:center;cursor:pointer;flex:none}
 .round:active{transform:scale(.92)}
 .round .ic{width:20px;height:20px}
 .round.stop{background:var(--ink);color:#1b1619}
@@ -299,4 +306,8 @@ select.ent{margin-left:auto;max-width:340px;height:38px;padding:0 12px;border-ra
 .dname{font-size:16px;font-weight:500}
 .dlabel{font-size:11px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--ink3);margin-top:4px}
 .modes.left{justify-content:flex-start}
+
+.lcolors{margin-left:auto;display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.lcol{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600}
+.lcol input{width:34px;height:28px;border:0;padding:0;background:none;cursor:pointer}
 `;

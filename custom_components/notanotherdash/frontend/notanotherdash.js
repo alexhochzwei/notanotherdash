@@ -49,6 +49,19 @@ function lineColor(transport) {
   return "#f2a65a";
 }
 
+/** Schwarz oder Weiß, je nachdem was auf der Hintergrundfarbe besser lesbar ist. */
+function textOn(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex || "");
+  if (!m) return "#141012";
+  const n = parseInt(m[1], 16);
+  const lin = (c) => {
+    c /= 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  const L = 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
+  return L > 0.3 ? "#141012" : "#ffffff";
+}
+
 function oldIpad() {
   const m = /OS (\d+)_\d+(?:_\d+)? like Mac OS X/.exec(navigator.userAgent || "");
   return !!(m && parseInt(m[1], 10) < 16);
@@ -483,13 +496,21 @@ class NotAnotherDashPanel extends HTMLElement {
     const el = this.shadowRoot.querySelector('.tile[data-room="' + (window.CSS && window.CSS.escape ? window.CSS.escape(rid) : rid) + '"]');
     if (!room || !el) return;
     const s = roomSummary(room, this._hass.states, Date.now());
-    const sub = [];
-    if (s.temp != null) sub.push(fmtNum(s.temp, 1) + "°");
+    // Ist/Soll mit Flamme davor: farbig, wenn geheizt wird, sonst grau (nur bei Räumen mit Thermostat).
+    let temp = "";
+    if (s.temp != null) {
+      temp = fmtNum(s.temp, 1) + "°";
+      if (room.climates.length) {
+        temp =
+          '<span class="theat' + (s.heating ? " on" : "") + '" aria-label="' + (s.heating ? "heizt" : "heizt nicht") + '">' + icon("flame") + "</span>" +
+          temp + (s.target != null ? '<span class="tgt">/' + fmtNum(s.target, s.target % 1 ? 1 : 0) + "°</span>" : "");
+      }
+    }
+    const sub = [temp];
     if (s.hum != null) sub.push(Math.round(s.hum) + " %");
     const pills = [];
     if (s.lightsOn) pills.push('<span class="pill light">' + icon("bulb") + s.lightsOn + "/" + s.lightsTotal + "</span>");
     if (s.cover) pills.push('<span class="pill">' + icon("shade") + esc(s.cover) + "</span>");
-    if (s.heating) pills.push('<span class="pill heat">' + icon("flame") + (s.target != null ? fmtNum(s.target, 0) + "°" : "Heizt") + "</span>");
     if (s.windowsOpen) pills.push('<span class="pill alert">' + icon("window") + (s.windowsOpen > 1 ? s.windowsOpen + " Fenster" : "Fenster") + "</span>");
     if (s.presence) pills.push('<span class="pill">' + icon("person") + esc(s.presence) + "</span>");
     if (s.cameras && pills.length < 3) pills.push('<span class="pill">' + icon("camera") + "Kamera</span>");
@@ -497,7 +518,7 @@ class NotAnotherDashPanel extends HTMLElement {
     el.classList.toggle("on", s.lightsOn > 0);
     el.setAttribute("aria-label", room.name + " öffnen");
     el.innerHTML =
-      '<div><div class="tname">' + esc(room.name) + '</div><div class="tsub">' + esc(sub.join(" · ")) + "</div></div>" +
+      '<div><div class="tname">' + esc(room.name) + '</div><div class="tsub">' + sub.filter(Boolean).join('<span class="dot">·</span>') + "</div></div>" +
       '<div class="pills">' + pills.join("") + "</div>";
   }
 
@@ -559,12 +580,12 @@ class NotAnotherDashPanel extends HTMLElement {
       const name = src.name;
       if (html) html += '<div class="sep"></div>';
       html +=
-        '<div style="display:flex;flex-direction:column;gap:11px"><div class="stop">' + icon("bus") + esc(name) + "</div>" +
+        '<div class="deps"><div class="stop">' + icon("bus") + esc(name) + "</div>" +
         (list.length
           ? list
               .map(
                 (d) =>
-                  '<div class="dep' + (d.cancelled ? " gone" : "") + '"><span class="line" style="background:' + lineColor(d.transport) + '">' + esc(d.line) + '</span><span class="to">' + esc(d.to) + '</span><span class="min' + (d.delay > 0 ? " late" : "") + '">' +
+                  '<div class="dep' + (d.cancelled ? " gone" : "") + '"><span class="line" style="' + this._lineStyle(d) + '">' + esc(d.line) + '</span><span class="to">' + esc(d.to) + '</span><span class="min' + (d.delay > 0 ? " late" : "") + '">' +
                   (d.cancelled
                     ? "fällt aus"
                     : d.minutes == null
@@ -715,6 +736,14 @@ class NotAnotherDashPanel extends HTMLElement {
     el.querySelectorAll("[data-seg] button").forEach((b) => (b.onclick = () => { d[b.parentNode.getAttribute("data-seg")] = parseInt(b.getAttribute("data-val"), 10); this._renderSettings(); }));
     el.querySelectorAll("[data-local] button").forEach((b) => (b.onclick = () => { local(b.parentNode.getAttribute("data-local"), b.getAttribute("data-val")); this._applyLook(); this._renderSettings(); }));
     el.querySelectorAll("[data-tint]").forEach((b) => (b.onclick = () => { d.tint = b.getAttribute("data-tint"); this._renderSettings(); }));
+    el.querySelectorAll("input[data-linecolor]").forEach((i) => (i.onchange = () => {
+      d.line_colors = d.line_colors || {};
+      d.line_colors[i.getAttribute("data-linecolor")] = i.value;
+    }));
+    el.querySelectorAll("select[data-key]").forEach((sel) => {
+      if (sel.getAttribute("data-key") === "departures_source")
+        sel.addEventListener("change", () => this._renderSettings());
+    });
     el.querySelectorAll("select[data-room-map]").forEach((s) => (s.onchange = () => {
       const m = (d.vacuum_rooms = d.vacuum_rooms || {});
       if (s.value) m[s.getAttribute("data-room-map")] = s.value;
@@ -763,6 +792,13 @@ class NotAnotherDashPanel extends HTMLElement {
     return { ids: [id], name: so ? so.attributes.friendly_name || id : id };
   }
 
+  /** Linienfarbe: eigene Farbe aus den Einstellungen, sonst nach Verkehrsmittel; Schrift hell oder dunkel nach Kontrast. */
+  _lineStyle(d) {
+    const own = (this._settings.line_colors || {})[d.line];
+    const bg = own || lineColor(d.transport);
+    return "background:" + bg + ";color:" + textOn(bg);
+  }
+
   _depRow() {
     const d = this._draft;
     const cur = d.departures_source || (d.departures_entity ? "entity:" + d.departures_entity : "");
@@ -786,7 +822,32 @@ class NotAnotherDashPanel extends HTMLElement {
       '<select class="ent" data-key="departures_source" aria-label="Abfahrten"><option value="">– keine –</option>' +
       (devOpts ? '<optgroup label="Haltestellen">' + devOpts + "</optgroup>" : "") +
       (entOpts ? '<optgroup label="Einzelne Linien">' + entOpts + "</optgroup>" : "") +
-      "</select></div>"
+      "</select></div>" +
+      this._lineColorRows()
+    );
+  }
+
+  _lineColorRows() {
+    const d = this._draft;
+    const saved = this._settings;
+    this._settings = d;
+    const src = this._depSource();
+    this._settings = saved;
+    const lines = [];
+    src.ids.forEach((id) => {
+      const so = this._hass.states[id];
+      const n = so && so.attributes.line_name;
+      if (n && lines.indexOf(n) < 0) lines.push(n);
+    });
+    if (!lines.length) return "";
+    const colors = d.line_colors || {};
+    return (
+      '<div class="row"><div><div class="t">Linienfarben</div><div class="d">Farbe je Linie für die Abfahrten</div></div><div class="lcolors">' +
+      lines
+        .sort((a, b) => a.localeCompare(b, "de", { numeric: true }))
+        .map((n) => '<label class="lcol"><span>' + esc(n) + '</span><input type="color" value="' + esc(colors[n] || "#f2a65a") + '" data-linecolor="' + esc(n) + '"></label>')
+        .join("") +
+      "</div></div>"
     );
   }
 
