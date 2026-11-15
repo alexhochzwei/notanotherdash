@@ -64,6 +64,28 @@ export class EnergyView {
     }
   }
 
+  /** Preise aus den Energie-Einstellungen von HA: fester Preis oder Preis-Entität, je Zähler. */
+  async prices(gas, el) {
+    try {
+      const prefs = await this.hass.callWS({ type: "energy/get_prefs" });
+      const out = {};
+      const states = this.hass.states;
+      (prefs.energy_sources || []).forEach((src) => {
+        let price = src.number_energy_price;
+        if (src.entity_energy_price && states[src.entity_energy_price]) {
+          const v = parseFloat(states[src.entity_energy_price].state);
+          if (isFinite(v)) price = v;
+        }
+        if (price == null || !isFinite(price)) return;
+        if (src.type === "gas" && src.stat_energy_from === gas) out.gas = price;
+        if (src.type === "grid" && src.stat_energy_from === el) out.el = price;
+      });
+      return out;
+    } catch (e) {
+      return {};
+    }
+  }
+
   async load() {
     const st = this.host.settings();
     if (this.loading) return;
@@ -76,7 +98,8 @@ export class EnergyView {
       this.stats(gas ? [gas] : [], "day", midnight(now, -DAYS), now, ["change"]),
       this.stats(temp ? [temp] : [], "day", midnight(now, -DAYS), now, ["mean"]),
       this.stats(el ? [el] : [], "hour", midnight(now), now, ["change"]),
-      this.stats(el ? [el] : [], "hour", midnight(now, -1), now - 86400000, ["change"])
+      this.stats(el ? [el] : [], "hour", midnight(now, -1), now - 86400000, ["change"]),
+      this.prices(gas, el)
     ]);
     this.loading = false;
     this.data = {
@@ -84,6 +107,7 @@ export class EnergyView {
       temp: temp ? r[1][temp] || [] : [],
       elToday: el ? r[2][el] || [] : [],
       elYesterday: el ? r[3][el] || [] : [],
+      prices: r[4] || {},
       at: now
     };
     this.render();
@@ -115,8 +139,13 @@ export class EnergyView {
     const elY = sumChange(d.elYesterday);
     const elUnit = st.electricity_entity && states[st.electricity_entity] ? states[st.electricity_entity].attributes.unit_of_measurement || "kWh" : "kWh";
 
-    const kpi = (cap, val, unit, sub) =>
-      '<div class="card kpi"><div class="cap">' + cap + '</div><div class="v">' + val + "<small>" + esc(unit) + '</small></div><div class="s">' + sub + "</div></div>";
+    const pr = d.prices || {};
+    const eur = (amount, price, unit) =>
+      price != null && amount != null && isFinite(amount)
+        ? '<div class="eur">' + fmtNum(amount * price, 2) + " €<small>" + fmtNum(price, price < 1 ? 3 : 2) + " €/" + esc(unit) + "</small></div>"
+        : "";
+    const kpi = (cap, val, unit, sub, cost) =>
+      '<div class="card kpi"><div class="cap">' + cap + '</div><div class="v">' + val + "<small>" + esc(unit) + "</small></div>" + (cost || "") + '<div class="s">' + sub + "</div></div>";
     const expToday = today && today.hdd != null ? expected(model, today.hdd) : null;
     let devTxt = "";
     if (month.deviation != null) {
@@ -128,10 +157,10 @@ export class EnergyView {
     el.innerHTML =
       '<div class="ekpis">' +
       (st.gas_entity
-        ? kpi("Gas heute", today ? fmtNum(today.gas, 1) : "–", gasUnit, expToday != null ? "Erwartet " + fmtNum(expToday, 1) + " " + esc(gasUnit) + (today.temp != null ? " bei " + fmtNum(today.temp, 1) + "°" : "") : "Noch keine Prognose") +
-          kpi("Gas " + monthName, fmtNum(month.actual, 0), gasUnit, devTxt || "Erwartung braucht 5 Tage Verlauf")
+        ? kpi("Gas heute", today ? fmtNum(today.gas, 1) : "–", gasUnit, expToday != null ? "Erwartet " + fmtNum(expToday, 1) + " " + esc(gasUnit) + (today.temp != null ? " bei " + fmtNum(today.temp, 1) + "°" : "") : "Noch keine Prognose", eur(today ? today.gas : null, pr.gas, gasUnit)) +
+          kpi("Gas " + monthName, fmtNum(month.actual, 0), gasUnit, devTxt || "Erwartung braucht 5 Tage Verlauf", eur(month.actual, pr.gas, gasUnit))
         : "") +
-      (st.electricity_entity ? kpi("Strom heute", fmtNum(elT, 1), elUnit, d.elYesterday.length ? "Gestern um diese Zeit " + fmtNum(elY, 1) + " " + esc(elUnit) : "") : "") +
+      (st.electricity_entity ? kpi("Strom heute", fmtNum(elT, 1), elUnit, d.elYesterday.length ? "Gestern um diese Zeit " + fmtNum(elY, 1) + " " + esc(elUnit) : "", eur(elT, pr.el, elUnit)) : "") +
       (st.power_entity ? kpi("Strom jetzt", power != null && isFinite(power) ? fmtNum(power, 0) : "–", powerUnit, "") : "") +
       "</div>" +
       (st.gas_entity
@@ -143,7 +172,7 @@ export class EnergyView {
       (st.gas_entity
         ? '<div class="card efc"><div class="ctitle">Prognose nächste ' + (fc ? fc.days : 7) + ' Tage</div><div class="v">' +
           (fc ? "~ " + fmtNum(fc.sum, 0) + "<small>" + esc(gasUnit) + " Gas</small>" : "–") +
-          '</div><div class="cap">' + (fc ? "Aus Wettervorhersage, Ø " + fmtNum(fc.mean, 0) + "° außen" : "Braucht Wettervorhersage und 5 Tage Verlauf") + "</div></div>"
+          "</div>" + (fc && pr.gas != null ? '<div class="eur">~ ' + fmtNum(fc.sum * pr.gas, 0) + " €</div>" : "") + '<div class="cap">' + (fc ? "Aus Wettervorhersage, Ø " + fmtNum(fc.mean, 0) + "° außen" : "Braucht Wettervorhersage und 5 Tage Verlauf") + "</div></div>"
         : "") +
       "</div>";
     this.bind(rows, model, gasUnit);

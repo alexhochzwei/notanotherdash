@@ -182,31 +182,6 @@ export class RoomView {
       .map((m) => '<button class="mode' + (m.on ? " act" : "") + '" data-mode="' + esc(m.kind + ":" + m.value) + '">' + esc(m.label) + "</button>")
       .join("");
 
-    const radiators =
-      room.climates.length > 1
-        ? '<div class="rads">' +
-          room.climates
-            .map((id) => {
-              const c = states[id];
-              if (!c) return "";
-              const cur = c.attributes.current_temperature;
-              return (
-                '<div class="srow">' + icon("thermo") + esc(shortName(c.attributes.friendly_name || id, room.name)) +
-                '<span class="v">' + (cur != null ? fmtNum(cur, 1) + "°" : "") + (c.attributes.hvac_action === "heating" ? ' · <span class="hot">heizt</span>' : "") + "</span></div>"
-              );
-            })
-            .join("") +
-          "</div>"
-        : "";
-
-    const sensors = [];
-    if (s.hum != null) sensors.push('<div class="srow">' + icon("drop") + Math.round(s.hum) + " %</div>");
-    if (room.windows.length) sensors.push('<div class="srow">' + icon("window") + (s.windowsOpen ? '<span class="isopen">offen</span>' : "zu") + "</div>");
-    room.co2.forEach((id) => {
-      const c = states[id];
-      if (c && isFinite(parseFloat(c.state))) sensors.push('<div class="srow">' + icon("gauge") + Math.round(parseFloat(c.state)) + " ppm</div>");
-    });
-
     return (
       '<section class="card heat" aria-label="Heizung">' +
       graph +
@@ -218,8 +193,6 @@ export class RoomView {
       '<button class="dialend" style="right:10px" data-step="1" aria-label="Wärmer">' + icon("chev") + "</button>" +
       "</div>" +
       (modes ? '<div class="modes">' + modes + "</div>" : "") +
-      radiators +
-      (sensors.length ? '<div class="sensors">' + sensors.join("") + "</div>" : "") +
       "</section>"
     );
   }
@@ -485,6 +458,21 @@ export class RoomView {
     this.render();
   }
 
+  /** Raumsensoren (Luftfeuchte, Fenster, CO₂) als Zeilen, für die Heizungs-Detailansicht. */
+  sensorsHtml(s) {
+    const room = this.room;
+    const states = this.hass.states;
+    const sensors = [];
+    if (s.hum != null) sensors.push('<div class="srow">' + icon("drop") + Math.round(s.hum) + " %</div>");
+    if (room.windows.length) sensors.push('<div class="srow">' + icon("window") + (s.windowsOpen ? '<span class="isopen">offen</span>' : "zu") + "</div>");
+    room.co2.forEach((id) => {
+      const c = states[id];
+      if (c && isFinite(parseFloat(c.state))) sensors.push('<div class="srow">' + icon("gauge") + Math.round(parseFloat(c.state)) + " ppm</div>");
+    });
+
+    return sensors.length ? '<div class="sensors">' + sensors.join("") + "</div>" : "";
+  }
+
   detailHtml() {
     const d = this.detail;
     const states = this.hass.states;
@@ -518,7 +506,7 @@ export class RoomView {
         (!li.dimmable && !ct && !color ? '<div class="cap">Dieses Licht kann nur ein- und ausgeschaltet werden.</div>' : "")
       );
     }
-    // Heizung: jedes Thermostat einzeln, mit allen Betriebsarten und Presets.
+    // Heizung: jedes Thermostat einzeln, mit allen Betriebsarten und Presets, darunter die Raumsensoren.
     return (
       head("Heizung", this.room.climates.length > 1 ? this.room.climates.length + " Thermostate" : "Alle Einstellungen") +
       this.room.climates
@@ -539,7 +527,8 @@ export class RoomView {
             "</div>"
           );
         })
-        .join("")
+        .join("") +
+      this.sensorsHtml(roomSummary(this.room, states, Date.now()))
     );
   }
 

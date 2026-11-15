@@ -362,24 +362,61 @@ export function historyPoints(rows, attr) {
     .filter((p) => p[1] != null && isFinite(p[0]));
 }
 
-/** Pfade für den Temperaturverlauf: Linie, Fläche und Sollwertlinie in einer W×H-Box. */
+/**
+ * Verlauf glätten: in gleich breite Zeitfenster abtasten (letzter bekannter Wert),
+ * dann gleitender Mittelwert. Ergebnis: [[t, v], …] gleichmäßig über start…end.
+ */
+export function smoothPoints(points, start, end, buckets, radius) {
+  if (points.length < 2) return points;
+  const n = buckets || 48;
+  const r = radius == null ? 2 : radius;
+  const step = (end - start) / n;
+  const raw = [];
+  let j = 0;
+  let last = points[0][1];
+  for (let i = 0; i <= n; i++) {
+    const t = start + i * step;
+    while (j < points.length && points[j][0] <= t) last = points[j++][1];
+    raw.push([t, last]);
+  }
+  return raw.map((p, i) => {
+    let sum = 0;
+    let w = 0;
+    for (let k = -r; k <= r; k++) {
+      const q = raw[i + k];
+      if (!q) continue;
+      const wk = r + 1 - Math.abs(k);
+      sum += q[1] * wk;
+      w += wk;
+    }
+    return [p[0], sum / w];
+  });
+}
+
+/** Pfade für den Temperaturverlauf (geglättet): Linie, Fläche und Sollwertlinie in einer W×H-Box. */
 export function graphPaths(points, target, start, end, W, H) {
   if (points.length < 2) return null;
-  const vals = points.map((p) => p[1]).concat(target != null ? [target] : []);
+  const sm = smoothPoints(points, start, end, 48, 2);
+  const vals = sm.map((p) => p[1]).concat(target != null ? [target] : []);
   let lo = Math.min.apply(null, vals) - 0.6;
   let hi = Math.max.apply(null, vals) + 0.6;
   const top = H * 0.16;
   const bottom = H * 0.92;
   const x = (t) => ((Math.max(start, t) - start) / (end - start)) * W;
   const y = (v) => bottom - ((v - lo) / (hi - lo)) * (bottom - top);
-  const pts = points.map((p) => [x(p[0]), y(p[1])]);
-  pts.push([W, pts[pts.length - 1][1]]);
-  let line = "M" + pts[0][0].toFixed(1) + " " + pts[0][1].toFixed(1);
-  for (let i = 1; i < pts.length; i++) {
-    const p0 = pts[i - 1];
+  const pts = sm.map((p) => [x(p[0]), y(p[1])]);
+  // Catmull-Rom als kubische Bézier: weiche Kurve durch alle Punkte.
+  const f = (v) => v.toFixed(1);
+  let line = "M" + f(pts[0][0]) + " " + f(pts[0][1]);
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] || pts[i];
     const p1 = pts[i];
-    const mx = ((p0[0] + p1[0]) / 2).toFixed(1);
-    line += " C" + mx + " " + p0[1].toFixed(1) + " " + mx + " " + p1[1].toFixed(1) + " " + p1[0].toFixed(1) + " " + p1[1].toFixed(1);
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2] || p2;
+    line +=
+      " C" + f(p1[0] + (p2[0] - p0[0]) / 6) + " " + f(p1[1] + (p2[1] - p0[1]) / 6) +
+      " " + f(p2[0] - (p3[0] - p1[0]) / 6) + " " + f(p2[1] - (p3[1] - p1[1]) / 6) +
+      " " + f(p2[0]) + " " + f(p2[1]);
   }
   const ty = target != null ? y(target).toFixed(1) : null;
   return {

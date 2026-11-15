@@ -129,8 +129,8 @@ select.ent{margin-left:auto;max-width:340px;height:38px;padding:0 12px;border-ra
 .sbody.noheat{grid-template-columns:minmax(0,1fr)}
 .sright{display:flex;flex-direction:column;gap:12px;min-width:0;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
 
-.card.heat{position:relative;overflow:hidden;padding:18px;display:flex;flex-direction:column;gap:12px;border-radius:22px;border:1px solid var(--line);background:linear-gradient(170deg,rgba(255,143,92,.14),rgba(40,33,37,.5) 55%)}
-.heat > :not(.more):not(.graph){position:relative}
+.card.heat{position:relative;overflow:hidden;align-self:start;padding:18px;display:flex;flex-direction:column;gap:12px;border-radius:22px;border:1px solid var(--line);background:linear-gradient(170deg,rgba(255,143,92,.14),rgba(40,33,37,.5) 55%)}
+.heat > :not(.more):not(.graph){position:relative;flex:none}
 .graph{position:absolute;left:0;right:0;bottom:0;height:250px;pointer-events:none}
 .graph svg{position:absolute;left:0;top:0;width:100%;height:100%}
 .graph .axis{position:absolute;right:14px;bottom:8px;font-size:11px;color:rgba(245,238,233,.4)}
@@ -154,6 +154,7 @@ select.ent{margin-left:auto;max-width:340px;height:38px;padding:0 12px;border-ra
 .srow .ic{width:17px;height:17px;color:rgba(245,238,233,.55)}
 .srow .v{margin-left:auto}
 .sensors{margin-top:auto;display:flex;gap:14px;flex-wrap:wrap}
+.detail .sensors{margin-top:14px}
 
 .lights{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;flex:none}
 .lt{position:relative;overflow:hidden;height:116px;border-radius:20px;border:1px solid var(--line);background:rgba(40,33,37,.55);text-align:left;padding:13px 14px;display:flex;flex-direction:column;justify-content:space-between;cursor:pointer;touch-action:none;-webkit-user-select:none;user-select:none}
@@ -187,9 +188,11 @@ select.ent{margin-left:auto;max-width:340px;height:38px;padding:0 12px;border-ra
 .cap{font-size:12.5px;font-weight:500;color:rgba(245,238,233,.66)}
 .ctitle{font-size:14px;font-weight:500}
 .ekpis{display:flex;gap:14px}
-.ekpis .kpi{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:space-between;height:96px}
+.ekpis .kpi{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:space-between;height:112px}
 .kpi .v,.efc .v{font-size:30px;font-weight:400;letter-spacing:-.01em;font-variant-numeric:tabular-nums;line-height:1}
 .kpi .v small,.efc .v small{font-size:15px;color:var(--ink2);margin-left:4px}
+.eur{font-size:15px;color:var(--heat);font-variant-numeric:tabular-nums}
+.eur small{font-size:12px;color:var(--ink3);margin-left:6px}
 .kpi .s{font-size:12.5px;color:var(--ink2);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .erow{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:14px;margin-top:14px}
 .chead{display:flex;align-items:center;gap:12px}
