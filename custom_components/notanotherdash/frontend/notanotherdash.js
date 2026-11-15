@@ -496,14 +496,15 @@ class NotAnotherDashPanel extends HTMLElement {
     const el = this.shadowRoot.querySelector('.tile[data-room="' + (window.CSS && window.CSS.escape ? window.CSS.escape(rid) : rid) + '"]');
     if (!room || !el) return;
     const s = roomSummary(room, this._hass.states, Date.now());
-    // Ist/Soll mit Flamme davor: farbig, wenn geheizt wird, sonst grau (nur bei Räumen mit Thermostat).
+    // Ist/Soll: Zahlen orange, wenn geheizt wird (nur bei Räumen mit Thermostat).
     let temp = "";
     if (s.temp != null) {
       temp = fmtNum(s.temp, 1) + "°";
       if (room.climates.length) {
         temp =
-          '<span class="theat' + (s.heating ? " on" : "") + '" aria-label="' + (s.heating ? "heizt" : "heizt nicht") + '">' + icon("flame") + "</span>" +
-          temp + (s.target != null ? '<span class="tgt">/' + fmtNum(s.target, s.target % 1 ? 1 : 0) + "°</span>" : "");
+          '<span class="ttemp' + (s.heating ? " on" : "") + '" aria-label="' + (s.heating ? "heizt" : "heizt nicht") + '">' +
+          temp + (s.target != null ? '<span class="tgt">/' + fmtNum(s.target, s.target % 1 ? 1 : 0) + "°</span>" : "") +
+          "</span>";
       }
     }
     const sub = [temp];

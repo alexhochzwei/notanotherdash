@@ -57,10 +57,8 @@ header{position:relative;display:flex;align-items:flex-end;gap:24px;padding:22px
 .tile.on{background:linear-gradient(160deg,rgba(242,166,90,.16),rgba(255,255,255,.05) 60%);border-color:rgba(242,166,90,.28)}
 .tname{font-size:18px;font-weight:500;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tsub{display:flex;align-items:center;font-size:13.5px;color:var(--ink2);font-variant-numeric:tabular-nums;margin-top:2px;min-height:17px;white-space:nowrap}
-.theat{display:inline-flex;margin-right:4px;color:rgba(245,238,233,.35)}
-.theat .ic{width:14px;height:14px}
-.theat.on{color:var(--heat)}
 .tsub .tgt{color:var(--ink3)}
+.ttemp.on,.ttemp.on .tgt{color:var(--heat)}
 .tsub .dot{margin:0 5px}
 .pills{display:flex;gap:5px;flex-wrap:nowrap;overflow:hidden}
 .pill{display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 8px 0 6px;border-radius:13px;background:rgba(255,255,255,.07);font-size:12.5px;font-weight:500;color:rgba(245,238,233,.8);font-variant-numeric:tabular-nums;white-space:nowrap;flex:none}
