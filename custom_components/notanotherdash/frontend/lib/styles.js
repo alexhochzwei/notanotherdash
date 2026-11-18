@@ -221,11 +221,18 @@ select.ent{margin-left:auto;max-width:340px;height:38px;padding:0 12px;border-ra
 .estats div span:last-child{margin-left:auto}
 .ebars .xax{padding-left:0}
 .efc{display:flex;flex-direction:column;justify-content:space-between;min-height:150px}
-.ecol{display:flex;flex-direction:column;gap:14px;min-width:0}
-.efc.mini{min-height:0;gap:6px}
-.efc.mini .v{font-size:26px;display:flex;align-items:baseline;gap:4px}
-.efc.mini .eur{margin-left:auto;font-size:15px}
-.erow.one{grid-template-columns:minmax(0,1fr)}
+.gplot{display:grid;grid-template-columns:minmax(0,1fr) 27%;gap:20px;margin-top:8px}
+.gplot .plot{margin-top:0}
+.gtoday{position:relative;display:flex;flex-direction:column;padding-left:20px;border-left:1px solid var(--line)}
+.gtl{display:flex;justify-content:space-between;font-size:11px;color:var(--ink3);height:0;position:relative;top:-2px;z-index:1}
+.gtl span:first-child{color:var(--ink2)}
+.gtoday .pwrap{flex:none}
+.gsub{margin-top:6px;font-size:12px}
+.yax.r{text-align:left;min-width:24px}
+.xax.tr{padding-right:30px}
+.tln{width:16px;height:0;border-top:2px solid #5a86e8;display:inline-block}
+.ebars .chead .cap{margin-left:auto}
+.ebars .chead .cap + .emore{margin-left:12px}.erow.one{grid-template-columns:minmax(0,1fr)}
 .erow.half{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
 .yax.s{height:130px}
 .chead .leg + .emore{margin-left:14px}

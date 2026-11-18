@@ -267,35 +267,40 @@ export class EnergyView {
       return out;
     };
 
+    // Strom heute: aktuelle Leistung (falls vorhanden) mit in die Kachel.
+    const powerTxt = power != null && isFinite(power) ? "Jetzt " + fmtNum(power, 0) + " " + esc(powerUnit) : "";
+    const elSub = [powerTxt, d.elHours.length ? (powerTxt ? "gestern " : "Gestern um diese Zeit ") + fmtNum(elYesterday, 1) + " " + esc(elUnit) : ""].filter(Boolean).join(" · ");
+
     let html =
       '<div class="ekpis">' +
-      (st.electricity_entity ? kpi("Strom heute", fmtNum(elToday, 1), elUnit, d.elHours.length ? "Gestern um diese Zeit " + fmtNum(elYesterday, 1) + " " + esc(elUnit) : "", eur(elToday, pr.el, elUnit)) : "") +
-      (st.power_entity ? kpi("Strom jetzt", power != null && isFinite(power) ? fmtNum(power, 0) : "–", powerUnit, "") : "") +
+      (st.electricity_entity ? kpi("Strom heute", fmtNum(elToday, 1), elUnit, elSub, eur(elToday, pr.el, elUnit)) : st.power_entity ? kpi("Strom jetzt", powerTxt ? fmtNum(power, 0) : "–", powerUnit, "") : "") +
       (st.gas_entity
         ? kpi("Gas heute", today ? fmtNum(today.gas, 1) : "–", gasUnit, gasExp != null ? "Erwartet " + fmtNum(gasExp, 1) + " " + esc(gasUnit) + (tToday != null ? " bei " + fmtNum(tToday, 1) + "°" : "") : "Noch keine Prognose", eur(today ? today.gas : null, pr.gas, gasUnit)) +
-          kpi("Gas " + monthName, fmtNum(month.actual, 0), gasUnit, devTxt || "Erwartung braucht 5 Tage Verlauf", eur(month.actual, pr.gas, gasUnit))
+          kpi("Gas " + monthName, fmtNum(month.actual, 0), gasUnit, devTxt || "Erwartung braucht 5 Tage Verlauf", eur(month.actual, pr.gas, gasUnit)) +
+          kpi(
+            "Prognose " + (fc7 ? fc7.days : 7) + " Tage",
+            fc7 ? "~ " + fmtNum(fc7.sum, 0) : "–",
+            gasUnit + " Gas",
+            fc7 ? "Vorhersage Ø " + fmtNum(fc7.mean, 0) + "° außen" : "Braucht Vorhersage und 5 Tage Verlauf",
+            fc7 && pr.gas != null ? '<div class="eur">~ ' + fmtNum(fc7.sum * pr.gas, 0) + " €</div>" : ""
+          )
         : "") +
       "</div>" +
-      '<div class="erow">' +
-      (st.gas_entity ? '<div class="card echart">' + this.gasChart(chartRows, model, gasUnit, gasFcTotal, true) + "</div>" : "<div></div>") +
-      '<div class="ecol">' +
       (st.gas_entity
-        ? '<div class="card ebars">' +
-          this.hourChart("gas", "Gas heute", todayHours(gasH), gasFc, gasUnit, now, 56, gasFcTotal != null ? "Prognose " + fmtNum(gasFcTotal, 1) + " " + esc(gasUnit) + (pr.gas != null ? " · " + fmtNum(gasFcTotal * pr.gas, 2) + " €" : "") : "") +
-          "</div>"
+        ? '<div class="erow one"><div class="card echart">' +
+          this.gasChart(chartRows, model, gasUnit, gasFcTotal, true, {
+            hours: todayHours(gasH),
+            fc: gasFc,
+            now: now,
+            sub: gasFcTotal != null ? "Prognose heute " + fmtNum(gasFcTotal, 1) + " " + esc(gasUnit) + (pr.gas != null ? " · " + fmtNum(gasFcTotal * pr.gas, 2) + " €" : "") : ""
+          }) +
+          "</div></div>"
         : "") +
       (st.electricity_entity
-        ? '<div class="card ebars">' +
-          this.hourChart("el", "Strom heute", todayHours(elH), elFc, elUnit, now, 56, elFcTotal != null ? "Prognose " + fmtNum(elFcTotal, 1) + " " + esc(elUnit) + (pr.el != null ? " · " + fmtNum(elFcTotal * pr.el, 2) + " €" : "") : "", true) +
-          "</div>"
-        : "") +
-      (st.gas_entity
-        ? '<div class="card efc mini"><div class="ctitle">Prognose nächste ' + (fc7 ? fc7.days : 7) + ' Tage</div><div class="v">' +
-          (fc7 ? "~ " + fmtNum(fc7.sum, 0) + "<small>" + esc(gasUnit) + " Gas</small>" : "–") +
-          (fc7 && pr.gas != null ? '<span class="eur">~ ' + fmtNum(fc7.sum * pr.gas, 0) + " €</span>" : "") + "</div>" +
-          '<div class="cap">' + (fc7 ? "Aus Wettervorhersage, Ø " + fmtNum(fc7.mean, 0) + "° außen" : "Braucht Wettervorhersage und 5 Tage Verlauf") + "</div></div>"
-        : "") +
-      "</div></div>";
+        ? '<div class="erow one"><div class="card ebars">' +
+          this.hourChart("el", "Strom heute je Stunde", todayHours(elH), elFc, elUnit, now, 70, elFcTotal != null ? "Prognose heute " + fmtNum(elFcTotal, 1) + " " + esc(elUnit) + (pr.el != null ? " · " + fmtNum(elFcTotal * pr.el, 2) + " €" : "") : "", true) +
+          "</div></div>"
+        : "");
 
     if (this.detail === "gas" && st.gas_entity) html += this.gasDetail(past, model, gasUnit, gasToday, meters, now);
     if (this.detail === "el" && st.electricity_entity) html += this.elDetail(d.elDays, elUnit, elToday, pr, meters, now);
@@ -317,8 +322,8 @@ export class EnergyView {
     return breakdown(total, parts, "Heizung (ohne Zuordnung)", 7);
   }
 
-  /** Stundenbalken für heute, Prognose für die restlichen Stunden hell. */
-  hourChart(kind, title, hours, fc, unit, now, H, sub, analyse) {
+  /** SVG-Stundenbalken für heute (0–24 Uhr), Prognose für die restlichen Stunden hell. */
+  hourSvg(kind, hours, fc, now, H, label) {
     const W = 600;
     const day0 = midnight(now);
     const vals = [];
@@ -338,16 +343,26 @@ export class EnergyView {
       if (fvals[i] != null && fvals[i] > (vals[i] || 0)) fbars += barPath(i * slot + 2, H - 1 - (fvals[i] / top) * (H - 4), slot - 4, H - 1);
     }
     const nowX = (((now - day0) / 86400000) * W).toFixed(1);
+    return {
+      max: maxV,
+      html:
+        '<div class="pwrap" style="height:' + H + 'px"><svg viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" role="img" aria-label="' + esc(label) + '">' +
+        '<path d="M0 ' + (H - 0.5) + " H" + W + '" stroke="rgba(245,238,233,.25)" vector-effect="non-scaling-stroke"/>' +
+        (fbars ? '<path d="' + fbars + '" fill="' + COLORS[kind] + '" fill-opacity=".3"/>' : "") +
+        '<path d="' + (bars || "M0 0") + '" fill="' + COLORS[kind] + '"/>' +
+        '<path d="M' + nowX + " 0 V" + H + '" stroke="#f5eee9" stroke-opacity=".55" vector-effect="non-scaling-stroke"/></svg></div>'
+    };
+  }
+
+  /** Karte „heute je Stunde“ (Strom). */
+  hourChart(kind, title, hours, fc, unit, now, H, sub, analyse) {
+    const h = this.hourSvg(kind, hours, fc, now, H, title);
     return (
-      '<div class="chead"><div class="ctitle">' + title + "</div>" +
-      (analyse ? '<button class="emore" data-detail="' + kind + '">Analyse' + icon("chev") + "</button>" : '<span class="cap" style="margin-left:auto">max. ' + fmtNum(maxV, 2) + " " + esc(unit) + "</span>") +
+      '<div class="chead"><div class="ctitle">' + title + '</div><span class="cap">max. ' + fmtNum(h.max, 2) + " " + esc(unit) + "/h</span>" +
+      (analyse ? '<button class="emore" data-detail="' + kind + '">Analyse' + icon("chev") + "</button>" : "") +
       "</div>" +
       (sub ? '<div class="cap">' + sub + "</div>" : "") +
-      '<div class="pwrap" style="height:' + H + 'px;margin-top:6px"><svg viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" role="img" aria-label="' + esc(title) + '">' +
-      '<path d="M0 ' + (H - 0.5) + " H" + W + '" stroke="rgba(245,238,233,.25)" vector-effect="non-scaling-stroke"/>' +
-      (fbars ? '<path d="' + fbars + '" fill="' + COLORS[kind] + '" fill-opacity=".3"/>' : "") +
-      '<path d="' + (bars || "M0 0") + '" fill="' + COLORS[kind] + '"/>' +
-      '<path d="M' + nowX + " 0 V" + H + '" stroke="#f5eee9" stroke-opacity=".55" vector-effect="non-scaling-stroke"/></svg></div>' +
+      '<div style="margin-top:6px">' + h.html + "</div>" +
       '<div class="xax" style="padding-left:0"><span>0 Uhr</span><span>6</span><span>12</span><span>18</span><span>24</span></div>'
     );
   }
@@ -427,7 +442,7 @@ export class EnergyView {
     );
   }
 
-  gasChart(rows, model, unit, todayFc, analyse) {
+  gasChart(rows, model, unit, todayFc, analyse, today) {
     const W = 600;
     const H = 180;
     const x0 = 0;
@@ -450,14 +465,17 @@ export class EnergyView {
       const e = expected(model, r.hdd);
       if (e != null) exp += (exp ? " L" : "M") + (x + bw / 2).toFixed(1) + " " + gy(e).toFixed(1);
     });
+    // Außentemperatur auf derselben Fläche, eigene Achse rechts (°C).
     const temps = rows.filter((r) => r.temp != null);
     let tLine = "";
     let tMin = 0;
     let tMax = 10;
+    let ty = null;
     if (temps.length) {
       tMin = Math.floor(Math.min.apply(null, temps.map((r) => r.temp)) - 1);
       tMax = Math.ceil(Math.max.apply(null, temps.map((r) => r.temp)) + 1);
-      const ty = (t) => 76 - ((t - tMin) / (tMax - tMin)) * 68;
+      while ((tMax - tMin) % 4) tMax += 1;
+      ty = (t) => base - ((t - tMin) / (tMax - tMin)) * (H - 8);
       rows.forEach((r, i) => {
         if (r.temp == null) return;
         tLine += (tLine ? " L" : "M") + (i * slot + slot / 2).toFixed(1) + " " + ty(r.temp).toFixed(1);
@@ -481,27 +499,36 @@ export class EnergyView {
     }
     const first = rows[0] ? new Date(rows[0].start).toLocaleDateString("de-DE", { day: "numeric", month: "short" }) : "";
     const mid = rows[Math.floor(rows.length / 2)] ? new Date(rows[Math.floor(rows.length / 2)].start).toLocaleDateString("de-DE", { day: "numeric", month: "short" }) : "";
+    const th = today ? this.hourSvg("gas", today.hours, today.fc, today.now, H, "Gas heute je Stunde") : null;
     return (
       '<div class="chead"><div class="ctitle">Gasverbrauch pro Tag</div><div class="leg"><span><i class="sw2" style="background:#e0683a"></i>Verbrauch</span>' +
-      (model ? '<span><i class="dash"></i>Erwartet</span>' : "") + "</div>" +
+      (model ? '<span><i class="dash"></i>Erwartet</span>' : "") +
+      (temps.length ? '<span><i class="tln"></i>Außen, Tagesmittel</span>' : "") + "</div>" +
       (analyse ? '<button class="emore" data-detail="gas">Analyse' + icon("chev") + "</button>" : "") + "</div>" +
+      '<div class="gplot"><div class="gdays">' +
       '<div class="plot"><div class="yax"><span>' + fmtNum(maxV, 0) + "</span><span>" + fmtNum(maxV * 0.75, 0) + "</span><span>" + fmtNum(maxV * 0.5, 0) + "</span><span>" + fmtNum(maxV * 0.25, 0) + "</span><span>0</span></div>" +
-      '<div class="pwrap"><svg viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" role="img" aria-label="Gasverbrauch der letzten Tage">' +
+      '<div class="pwrap"><svg viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" role="img" aria-label="Gasverbrauch und Außentemperatur der letzten Tage">' +
       '<path d="' + grid + '" stroke="rgba(245,238,233,.08)" vector-effect="non-scaling-stroke"/>' +
       '<path d="M0 ' + base + " H" + W + '" stroke="rgba(245,238,233,.25)" vector-effect="non-scaling-stroke"/>' +
       (hiBar ? '<path d="' + hiBar + '" fill="rgba(245,238,233,.07)"/>' : "") +
       (fbars ? '<path d="' + fbars + '" fill="#e0683a" fill-opacity=".3"/>' : "") +
       '<path d="' + (bars || "M0 0") + '" fill="#e0683a"/>' +
       (exp ? '<path d="' + exp + '" fill="none" stroke="#f5eee9" stroke-opacity=".8" stroke-width="2" stroke-dasharray="5 5" vector-effect="non-scaling-stroke"/>' : "") +
+      (ty && tMin < 0 && tMax > 0 ? '<path d="M0 ' + ty(0).toFixed(1) + " H" + W + '" stroke="#5a86e8" stroke-opacity=".35" stroke-dasharray="2 4" vector-effect="non-scaling-stroke"/>' : "") +
+      (tLine ? '<path d="' + tLine + '" fill="none" stroke="#5a86e8" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>' : "") +
       "</svg>" +
-      '<div class="hov">' + rows.map((r, i) => '<span data-day="' + i + '"></span>').join("") + "</div>" + tip + "</div></div>" +
+      '<div class="hov">' + rows.map((r, i) => '<span data-day="' + i + '"></span>').join("") + "</div>" + tip + "</div>" +
       (temps.length
-        ? '<div class="chead small"><i class="sw2" style="background:#5a86e8"></i><span class="cap">Außentemperatur, Tagesmittel</span><span class="cap" style="margin-left:auto">' + tMin + "° bis " + tMax + "°</span></div>" +
-          '<div class="pwrap t"><svg viewBox="0 0 ' + W + ' 80" preserveAspectRatio="none" aria-hidden="true">' +
-          (tMin < 0 && tMax > 0 ? '<path d="M0 ' + (76 - ((0 - tMin) / (tMax - tMin)) * 68).toFixed(1) + " H" + W + '" stroke="rgba(245,238,233,.25)" vector-effect="non-scaling-stroke"/>' : "") +
-          '<path d="' + tLine + '" fill="none" stroke="#5a86e8" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg></div>'
+        ? '<div class="yax r"><span>' + tMax + "°</span><span>" + Math.round(tMin + (tMax - tMin) * 0.75) + "°</span><span>" + Math.round((tMin + tMax) / 2) + "°</span><span>" + Math.round(tMin + (tMax - tMin) * 0.25) + "°</span><span>" + tMin + "°</span></div>"
         : "") +
-      '<div class="xax"><span>' + first + "</span><span>" + mid + "</span><span>heute</span></div>"
+      "</div>" +
+      '<div class="xax' + (temps.length ? " tr" : "") + '"><span>' + first + "</span><span>" + mid + "</span><span>heute</span></div></div>" +
+      (th
+        ? '<div class="gtoday"><div class="gtl"><span>Heute je Stunde</span><span>max. ' + fmtNum(th.max, 2) + " " + esc(unit) + "/h</span></div>" + th.html +
+          '<div class="xax" style="padding-left:0"><span>0</span><span>6</span><span>12</span><span>18</span><span>24</span></div>' +
+          (today.sub ? '<div class="cap gsub">' + today.sub + "</div>" : "") + "</div>"
+        : "") +
+      "</div>"
     );
   }
 
