@@ -383,6 +383,7 @@ class NotAnotherDashPanel extends HTMLElement {
         hass: () => this._hass,
         settings: () => this._settings,
         forecast: () => this._forecast,
+        weatherEntity: () => this._weatherEntity(),
         toast: (text) => this._toast(text)
       }),
       climate: new ClimateView(panelHost),

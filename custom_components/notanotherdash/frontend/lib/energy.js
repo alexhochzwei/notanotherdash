@@ -134,6 +134,19 @@ export class EnergyView {
     return { heat: heat, plugs: plugs };
   }
 
+  /** Stündliche Wettervorhersage (für die Temperatur im Heute-Diagramm). */
+  async hourlyForecast() {
+    const id = this.host.weatherEntity ? this.host.weatherEntity() : null;
+    if (!id) return [];
+    try {
+      const res = await this.hass.callService("weather", "get_forecasts", { type: "hourly" }, { entity_id: id }, false, true);
+      const r = res && res.response && res.response[id];
+      return (r && r.forecast) || [];
+    } catch (e) {
+      return [];
+    }
+  }
+
   async load() {
     const st = this.host.settings();
     if (this.loading) return;
@@ -152,7 +165,9 @@ export class EnergyView {
       this.stats(gas ? [gas] : [], "hour", midnight(now, -PROFILE_DAYS - 1), now, ["change"]),
       this.stats(el ? [el] : [], "day", midnight(now, -CHART_DAYS), now, ["change"]),
       this.prices(gas, el),
-      this.stats(parts, "day", midnight(now, -CHART_DAYS), now, ["change"], { energy: "kWh" })
+      this.stats(parts, "day", midnight(now, -CHART_DAYS), now, ["change"], { energy: "kWh" }),
+      this.stats(temp ? [temp] : [], "hour", midnight(now), now, ["mean"]),
+      this.hourlyForecast()
     ]);
     this.loading = false;
     this.data = {
@@ -164,6 +179,8 @@ export class EnergyView {
       prices: r[5] || {},
       parts: r[6] || {},
       meters: m,
+      tempHours: temp ? r[7][temp] || [] : [],
+      tempFc: r[8] || [],
       at: now
     };
     this.render();
@@ -292,6 +309,10 @@ export class EnergyView {
             hours: todayHours(gasH),
             fc: gasFc,
             now: now,
+            tMeas: (d.tempHours || []).filter((x) => x.mean != null).map((x) => [startOf(x) + 1800000, x.mean]),
+            tFc: (d.tempFc || [])
+              .map((f) => [Date.parse(f.datetime) + 1800000, f.temperature])
+              .filter((p) => p[1] != null && p[0] >= now && p[0] < midnight(now, 1)),
             sub: gasFcTotal != null ? "Prognose heute " + fmtNum(gasFcTotal, 1) + " " + esc(gasUnit) + (pr.gas != null ? " · " + fmtNum(gasFcTotal * pr.gas, 2) + " €" : "") : ""
           }) +
           "</div></div>"
@@ -323,7 +344,7 @@ export class EnergyView {
   }
 
   /** SVG-Stundenbalken für heute (0–24 Uhr), Prognose für die restlichen Stunden hell. */
-  hourSvg(kind, hours, fc, now, H, label) {
+  hourSvg(kind, hours, fc, now, H, label, extra) {
     const W = 600;
     const day0 = midnight(now);
     const vals = [];
@@ -350,6 +371,7 @@ export class EnergyView {
         '<path d="M0 ' + (H - 0.5) + " H" + W + '" stroke="rgba(245,238,233,.25)" vector-effect="non-scaling-stroke"/>' +
         (fbars ? '<path d="' + fbars + '" fill="' + COLORS[kind] + '" fill-opacity=".3"/>' : "") +
         '<path d="' + (bars || "M0 0") + '" fill="' + COLORS[kind] + '"/>' +
+        (extra || "") +
         '<path d="M' + nowX + " 0 V" + H + '" stroke="#f5eee9" stroke-opacity=".55" vector-effect="non-scaling-stroke"/></svg></div>'
     };
   }
@@ -467,13 +489,15 @@ export class EnergyView {
     });
     // Außentemperatur auf derselben Fläche, eigene Achse rechts (°C).
     const temps = rows.filter((r) => r.temp != null);
+    const tToday = today ? (today.tMeas || []).concat(today.tFc || []) : [];
     let tLine = "";
     let tMin = 0;
     let tMax = 10;
     let ty = null;
-    if (temps.length) {
-      tMin = Math.floor(Math.min.apply(null, temps.map((r) => r.temp)) - 1);
-      tMax = Math.ceil(Math.max.apply(null, temps.map((r) => r.temp)) + 1);
+    if (temps.length || tToday.length) {
+      const all = temps.map((r) => r.temp).concat(tToday.map((p) => p[1]));
+      tMin = Math.floor(Math.min.apply(null, all) - 1);
+      tMax = Math.ceil(Math.max.apply(null, all) + 1);
       while ((tMax - tMin) % 4) tMax += 1;
       ty = (t) => base - ((t - tMin) / (tMax - tMin)) * (H - 8);
       rows.forEach((r, i) => {
@@ -499,7 +523,18 @@ export class EnergyView {
     }
     const first = rows[0] ? new Date(rows[0].start).toLocaleDateString("de-DE", { day: "numeric", month: "short" }) : "";
     const mid = rows[Math.floor(rows.length / 2)] ? new Date(rows[Math.floor(rows.length / 2)].start).toLocaleDateString("de-DE", { day: "numeric", month: "short" }) : "";
-    const th = today ? this.hourSvg("gas", today.hours, today.fc, today.now, H, "Gas heute je Stunde") : null;
+    let tExtra = "";
+    if (today && ty) {
+      const day0 = midnight(today.now);
+      const px = (t) => (((t - day0) / 86400000) * W).toFixed(1);
+      const line = (pts) => pts.map((p, i) => (i ? " L" : "M") + px(p[0]) + " " + ty(p[1]).toFixed(1)).join("");
+      const meas = (today.tMeas || []).slice().sort((a, b) => a[0] - b[0]);
+      let fcp = (today.tFc || []).slice().sort((a, b) => a[0] - b[0]);
+      if (meas.length && fcp.length) fcp = [meas[meas.length - 1]].concat(fcp);
+      if (meas.length > 1) tExtra += '<path d="' + line(meas) + '" fill="none" stroke="#5a86e8" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>';
+      if (fcp.length > 1) tExtra += '<path d="' + line(fcp) + '" fill="none" stroke="#5a86e8" stroke-width="2" stroke-dasharray="4 4" stroke-opacity=".8" vector-effect="non-scaling-stroke"/>';
+    }
+    const th = today ? this.hourSvg("gas", today.hours, today.fc, today.now, H, "Gas heute je Stunde", tExtra) : null;
     return (
       '<div class="chead"><div class="ctitle">Gasverbrauch pro Tag</div><div class="leg"><span><i class="sw2" style="background:#e0683a"></i>Verbrauch</span>' +
       (model ? '<span><i class="dash"></i>Erwartet</span>' : "") +
