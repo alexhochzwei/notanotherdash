@@ -170,8 +170,6 @@ export class RoomView {
       if (g) {
         graph =
           '<div class="graph" aria-hidden="true"><svg viewBox="0 0 276 250" preserveAspectRatio="none">' +
-          '<defs><linearGradient id="tg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff8f5c" stop-opacity=".30"/><stop offset="1" stop-color="#ff8f5c" stop-opacity="0"/></linearGradient></defs>' +
-          '<path d="' + g.area + '" fill="url(#tg)"/>' +
           '<path d="' + g.line + '" fill="none" stroke="#ff9a6b" stroke-opacity=".7" stroke-width="1.8" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>' +
           (g.target ? '<path d="' + g.target + '" fill="none" stroke="#f5eee9" stroke-opacity=".25" stroke-width="1.2" stroke-dasharray="4 5" vector-effect="non-scaling-stroke"/>' : "") +
           '</svg><span class="axis">24 h</span></div>';

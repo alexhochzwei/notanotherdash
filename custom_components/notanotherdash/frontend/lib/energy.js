@@ -1,25 +1,11 @@
-// Energie-Panel: Strom links, Gas rechts. Je Karte: heute stündlich (mit Prognose bis Mitternacht),
-// davor 28 Tage logarithmisch gestaucht, darunter die Aufschlüsselung. Regression und Details
-// liegen in einer zweiten Ebene („Analyse“).
+// Energie-Panel: Gas 30 Tage mit Erwartung, Temperatur und Tagesprognose, Gas und Strom heute je Stunde
+// mit Prognose bis Mitternacht, Prognose 7 Tage. Aufschlüsselung und Regressionsmodell liegen in einer
+// zweiten Ebene („Analyse“).
 // Daten aus den Langzeit-Statistiken des Recorders (keine eigene Speicherung).
 
 import { fmtNum } from "./model.js";
 import { icon } from "./icons.js";
-import {
-  fitModel,
-  expected,
-  forecastSum,
-  monthTotals,
-  sumChange,
-  niceMax,
-  barPath,
-  hdd,
-  hourMap,
-  hourProfile,
-  restOfDay,
-  timeline,
-  breakdown
-} from "./energycalc.js";
+import { fitModel, expected, forecastSum, monthTotals, sumChange, niceMax, barPath, hdd, hourMap, hourProfile, restOfDay, breakdown } from "./energycalc.js";
 
 const DAYS = 365; // Lernfenster fürs Modell
 const CHART_DAYS = 30; // Tage in den Detailansichten
@@ -55,7 +41,7 @@ export class EnergyView {
     // host: { el, hass(), settings(), forecast(), toast() }
     this.host = host;
     this.data = null;
-    this.hover = null; // { chart, i }
+    this.hover = null; // Index des Tages im Gasdiagramm
     this.detail = null; // "el" | "gas"
     this.loading = false;
   }
@@ -271,10 +257,15 @@ export class EnergyView {
     }
     const monthName = new Date().toLocaleDateString("de-DE", { month: "long" });
 
-    // Aufschlüsselung heute.
     const meters = d.meters || { heat: [], plugs: [] };
-    const elParts = breakdown(elToday, this.partSums(meters.plugs, todayStart), "Sonstiges (ohne Messung)", 6);
-    const gasParts = this.gasSplit(gasToday, model, meters.heat, todayStart, (now - todayStart) / 86400000);
+    const chartRows = rows.filter((x) => x.start >= midnight(now, -CHART_DAYS));
+    const todayHours = (map) => {
+      const out = {};
+      Object.keys(map).forEach((k) => {
+        if (+k >= todayStart) out[k] = map[k];
+      });
+      return out;
+    };
 
     let html =
       '<div class="ekpis">' +
@@ -285,28 +276,29 @@ export class EnergyView {
           kpi("Gas " + monthName, fmtNum(month.actual, 0), gasUnit, devTxt || "Erwartung braucht 5 Tage Verlauf", eur(month.actual, pr.gas, gasUnit))
         : "") +
       "</div>" +
-      '<div class="egrid">' +
-      (st.electricity_entity
-        ? this.card("el", "Strom", elUnit, timeline(d.elDays, elH, elFc, now, 0.5), elToday, elFcTotal, pr.el, elParts, "Messsteckdosen heute")
-        : "<div></div>") +
+      '<div class="erow">' +
+      (st.gas_entity ? '<div class="card echart">' + this.gasChart(chartRows, model, gasUnit, gasFcTotal, true) + "</div>" : "<div></div>") +
+      '<div class="ecol">' +
       (st.gas_entity
-        ? this.card(
-            "gas",
-            "Gas",
-            gasUnit,
-            timeline(d.gas, gasH, gasFc, now, 0.5),
-            gasToday,
-            gasFcTotal,
-            pr.gas,
-            gasParts,
-            "Heute nach Verwendung",
-            fc7 ? "Nächste " + fc7.days + " Tage ~ " + fmtNum(fc7.sum, 0) + " " + esc(gasUnit) + (pr.gas != null ? " · ~ " + fmtNum(fc7.sum * pr.gas, 0) + " €" : "") : ""
-          )
-        : "<div></div>") +
-      "</div>";
+        ? '<div class="card ebars">' +
+          this.hourChart("gas", "Gas heute", todayHours(gasH), gasFc, gasUnit, now, 56, gasFcTotal != null ? "Prognose " + fmtNum(gasFcTotal, 1) + " " + esc(gasUnit) + (pr.gas != null ? " · " + fmtNum(gasFcTotal * pr.gas, 2) + " €" : "") : "") +
+          "</div>"
+        : "") +
+      (st.electricity_entity
+        ? '<div class="card ebars">' +
+          this.hourChart("el", "Strom heute", todayHours(elH), elFc, elUnit, now, 56, elFcTotal != null ? "Prognose " + fmtNum(elFcTotal, 1) + " " + esc(elUnit) + (pr.el != null ? " · " + fmtNum(elFcTotal * pr.el, 2) + " €" : "") : "", true) +
+          "</div>"
+        : "") +
+      (st.gas_entity
+        ? '<div class="card efc mini"><div class="ctitle">Prognose nächste ' + (fc7 ? fc7.days : 7) + ' Tage</div><div class="v">' +
+          (fc7 ? "~ " + fmtNum(fc7.sum, 0) + "<small>" + esc(gasUnit) + " Gas</small>" : "–") +
+          (fc7 && pr.gas != null ? '<span class="eur">~ ' + fmtNum(fc7.sum * pr.gas, 0) + " €</span>" : "") + "</div>" +
+          '<div class="cap">' + (fc7 ? "Aus Wettervorhersage, Ø " + fmtNum(fc7.mean, 0) + "° außen" : "Braucht Wettervorhersage und 5 Tage Verlauf") + "</div></div>"
+        : "") +
+      "</div></div>";
 
-    if (this.detail === "gas" && st.gas_entity) html += this.gasDetail(rows, past, model, gasUnit, fc7, pr, meters, now);
-    if (this.detail === "el" && st.electricity_entity) html += this.elDetail(d.elDays, elUnit, pr, meters, now);
+    if (this.detail === "gas" && st.gas_entity) html += this.gasDetail(past, model, gasUnit, gasToday, meters, now);
+    if (this.detail === "el" && st.electricity_entity) html += this.elDetail(d.elDays, elUnit, elToday, pr, meters, now);
     el.innerHTML = html;
     this.bind();
   }
@@ -325,86 +317,38 @@ export class EnergyView {
     return breakdown(total, parts, "Heizung (ohne Zuordnung)", 7);
   }
 
-  /** Eine Energiekarte: Kopf, Zeitachse, Aufschlüsselung. */
-  card(kind, title, unit, tl, todayVal, fcTotal, price, parts, partsTitle, extra) {
-    const color = COLORS[kind];
-    return (
-      '<div class="card ecard">' +
-      '<div class="chead"><div class="ctitle">' + title + "</div>" +
-      '<button class="emore" data-detail="' + kind + '">Analyse' + icon("chev") + "</button></div>" +
-      '<div class="esum"><span><b>' + fmtNum(todayVal, 1) + "</b> " + esc(unit) + " heute</span>" +
-      (fcTotal != null ? '<span class="efc2">Prognose ' + fmtNum(fcTotal, 1) + " " + esc(unit) + (price != null ? " · " + fmtNum(fcTotal * price, 2) + " €" : "") + "</span>" : "") +
-      "</div>" +
-      this.timelineChart(kind, tl, unit, color) +
-      (extra ? '<div class="cap efc7">' + extra + "</div>" : "") +
-      '<div class="cap eptitle">' + partsTitle + "</div>" +
-      this.partsList(parts, unit) +
-      "</div>"
-    );
-  }
-
-  timelineChart(kind, tl, unit, color) {
+  /** Stundenbalken für heute, Prognose für die restlichen Stunden hell. */
+  hourChart(kind, title, hours, fc, unit, now, H, sub, analyse) {
     const W = 600;
-    const H = 150;
-    const base = H - 1;
-    const vals = tl.slots.map((s) => Math.max(s.value || 0, s.forecast || 0));
-    const maxV = 4 * niceMax(Math.max.apply(null, vals.concat([0.001])) / 4);
-    const gy = (v) => base - (v / maxV) * (H - 8);
+    const day0 = midnight(now);
+    const vals = [];
+    const fvals = [];
+    for (let i = 0; i < 24; i++) {
+      const t = day0 + i * 3600000;
+      vals.push(t in hours ? hours[t] : null);
+      fvals.push(t in fc ? fc[t] : null);
+    }
+    const maxV = Math.max.apply(null, vals.concat(fvals).map((v) => v || 0).concat([0.01]));
+    const top = niceMax(maxV);
+    const slot = W / 24;
     let bars = "";
     let fbars = "";
-    tl.slots.forEach((s) => {
-      const x = s.x0 * W;
-      const w = (s.x1 - s.x0) * W;
-      const gap = s.kind === "day" ? Math.min(3, w * 0.25) : Math.min(1.5, w * 0.2);
-      const bw = Math.max(1, w - gap);
-      if (s.value != null && s.value > 0) bars += barPath(x + gap / 2, gy(s.value), bw, base);
-      if (s.forecast != null && s.forecast > (s.value || 0)) fbars += barPath(x + gap / 2, gy(s.forecast), bw, base);
-    });
-    const grid = [0.25, 0.5, 0.75].map((f) => "M0 " + (base - f * (H - 8)).toFixed(1) + " H" + W).join(" ");
-    const nowX = (tl.nowX * W).toFixed(1);
-    const sep = (0.5 * W).toFixed(1);
-    const todayX = (tl.todayX * W).toFixed(1);
-    const h = this.hover && this.hover.chart === kind ? tl.slots[this.hover.i] : null;
-    let hiBar = "";
-    let tip = "";
-    if (h) {
-      hiBar = "M" + (h.x0 * W).toFixed(1) + " 0 H" + (h.x1 * W).toFixed(1) + " V" + H + " H" + (h.x0 * W).toFixed(1) + " Z";
-      const left = ((h.x0 + h.x1) / 2) * 100;
-      const date = new Date(h.start);
-      const label =
-        h.kind === "day"
-          ? date.toLocaleDateString("de-DE", { weekday: "short", day: "numeric", month: "short" })
-          : date.toLocaleDateString("de-DE", { weekday: "short" }) + ", " + date.getHours() + "–" + (date.getHours() + 1) + " Uhr";
-      let body = "";
-      if (h.kind === "day") body = h.total != null ? fmtNum(h.total, 1) + " " + esc(unit) + "<br>Ø " + fmtNum(h.value, 2) + " " + esc(unit) + "/h" : "Keine Daten";
-      else {
-        if (h.value != null) body += fmtNum(h.value, 2) + " " + esc(unit) + (h.current ? " bisher" : "");
-        if (h.forecast != null) body += (body ? "<br>" : "") + "Prognose " + fmtNum(h.forecast, 2) + " " + esc(unit);
-        if (!body) body = "Keine Daten";
-      }
-      tip = '<div class="tip" style="' + (left > 60 ? "right:" + (100 - left + 2) + "%" : "left:" + (left + 2) + "%") + '"><b>' + label + "</b><br>" + body + "</div>";
+    for (let i = 0; i < 24; i++) {
+      if (vals[i] != null && vals[i] > 0) bars += barPath(i * slot + 2, H - 1 - (vals[i] / top) * (H - 4), slot - 4, H - 1);
+      if (fvals[i] != null && fvals[i] > (vals[i] || 0)) fbars += barPath(i * slot + 2, H - 1 - (fvals[i] / top) * (H - 4), slot - 4, H - 1);
     }
-    const lbl = (x, text, cls) => '<span class="' + (cls || "") + '" style="left:' + (x * 100).toFixed(2) + '%">' + text + "</span>";
+    const nowX = (((now - day0) / 86400000) * W).toFixed(1);
     return (
-      '<div class="plot"><div class="yax s"><span>' + fmtNum(maxV, maxV < 1 ? 2 : 1) + "</span><span>" + fmtNum(maxV / 2, maxV < 1 ? 2 : 1) + "</span><span>0</span></div>" +
-      '<div class="pwrap s"><svg viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" role="img" aria-label="Verbrauch je Stunde, Historie gestaucht">' +
-      '<path d="' + grid + '" stroke="rgba(245,238,233,.08)" vector-effect="non-scaling-stroke"/>' +
-      '<path d="M0 ' + base + " H" + W + '" stroke="rgba(245,238,233,.25)" vector-effect="non-scaling-stroke"/>' +
-      '<path d="M' + sep + " 0 V" + H + '" stroke="rgba(245,238,233,.18)" stroke-dasharray="3 4" vector-effect="non-scaling-stroke"/>' +
-      '<path d="M' + todayX + " 0 V" + H + '" stroke="rgba(245,238,233,.12)" vector-effect="non-scaling-stroke"/>' +
-      (hiBar ? '<path d="' + hiBar + '" fill="rgba(245,238,233,.07)"/>' : "") +
-      (fbars ? '<path d="' + fbars + '" fill="' + color + '" fill-opacity=".3"/>' : "") +
-      '<path d="' + (bars || "M0 0") + '" fill="' + color + '"/>' +
-      '<path d="M' + nowX + " 0 V" + H + '" stroke="#f5eee9" stroke-opacity=".7" vector-effect="non-scaling-stroke"/>' +
-      "</svg>" +
-      '<div class="hov abs">' +
-      tl.slots.map((s, i) => '<span data-slot="' + kind + ":" + i + '" style="left:' + (s.x0 * 100).toFixed(3) + "%;width:" + ((s.x1 - s.x0) * 100).toFixed(3) + '%"></span>').join("") +
-      "</div>" + tip + "</div></div>" +
-      '<div class="xax abs">' +
-      lbl(0, "4 Wo.") + lbl(tl.ageX(14), "2 Wo.") + lbl(tl.ageX(7), "1 Wo.") +
-      lbl(0.5, "gestern") + lbl(tl.todayX, "heute") + lbl(tl.nowX, "jetzt", "now") +
+      '<div class="chead"><div class="ctitle">' + title + "</div>" +
+      (analyse ? '<button class="emore" data-detail="' + kind + '">Analyse' + icon("chev") + "</button>" : '<span class="cap" style="margin-left:auto">max. ' + fmtNum(maxV, 2) + " " + esc(unit) + "</span>") +
       "</div>" +
-      '<div class="cap eunit">' + esc(unit) + " je Stunde · links Tagesmittel, rechts stündlich · hell = Prognose</div>"
+      (sub ? '<div class="cap">' + sub + "</div>" : "") +
+      '<div class="pwrap" style="height:' + H + 'px;margin-top:6px"><svg viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" role="img" aria-label="' + esc(title) + '">' +
+      '<path d="M0 ' + (H - 0.5) + " H" + W + '" stroke="rgba(245,238,233,.25)" vector-effect="non-scaling-stroke"/>' +
+      (fbars ? '<path d="' + fbars + '" fill="' + COLORS[kind] + '" fill-opacity=".3"/>' : "") +
+      '<path d="' + (bars || "M0 0") + '" fill="' + COLORS[kind] + '"/>' +
+      '<path d="M' + nowX + " 0 V" + H + '" stroke="#f5eee9" stroke-opacity=".55" vector-effect="non-scaling-stroke"/></svg></div>' +
+      '<div class="xax" style="padding-left:0"><span>0 Uhr</span><span>6</span><span>12</span><span>18</span><span>24</span></div>'
     );
   }
 
@@ -434,28 +378,32 @@ export class EnergyView {
     );
   }
 
-  gasDetail(rows, past, model, unit, fc7, pr, meters, now) {
-    const chartRows = rows.filter((x) => x.start >= midnight(now, -CHART_DAYS));
-    const parts = this.gasSplit(sumChange(chartRows.map((r) => ({ change: r.gas }))), model, meters.heat, midnight(now, -CHART_DAYS), CHART_DAYS);
+  gasDetail(past, model, unit, gasToday, meters, now) {
+    const todayStart = midnight(now);
+    const from = midnight(now, -CHART_DAYS);
+    const last = past.filter((r) => r.start >= from);
+    const total30 = last.reduce((a, r) => a + r.gas, 0) + (gasToday || 0);
+    const p30 = this.gasSplit(total30, model, meters.heat, from, (now - from) / 86400000);
+    const pToday = this.gasSplit(gasToday, model, meters.heat, todayStart, (now - todayStart) / 86400000);
     return this.detailShell(
       "Gas – Analyse",
-      '<div class="erow"><div class="card echart">' + this.gasChart(chartRows, model, unit) + "</div>" +
-        '<div class="card escatter">' + this.scatter(past, model, unit) + "</div></div>" +
-        '<div class="erow"><div class="card"><div class="ctitle">Letzte ' + CHART_DAYS + " Tage nach Verwendung</div>" + this.partsList(parts, unit) + "</div>" +
-        '<div class="card efc"><div class="ctitle">Prognose nächste ' + (fc7 ? fc7.days : 7) + ' Tage</div><div class="v">' +
-        (fc7 ? "~ " + fmtNum(fc7.sum, 0) + "<small>" + esc(unit) + "</small>" : "–") +
-        "</div>" + (fc7 && pr.gas != null ? '<div class="eur">~ ' + fmtNum(fc7.sum * pr.gas, 0) + " €</div>" : "") +
-        '<div class="cap">' + (fc7 ? "Aus Wettervorhersage, Ø " + fmtNum(fc7.mean, 0) + "° außen" : "Braucht Wettervorhersage und 5 Tage Verlauf") + "</div></div></div>"
+      '<div class="erow"><div class="card">' +
+        '<div class="ctitle">Nach Verwendung · heute</div>' + this.partsList(pToday, unit) +
+        '<div class="ctitle" style="margin-top:16px">Letzte ' + CHART_DAYS + " Tage</div>" + this.partsList(p30, unit) +
+        '<div class="cap" style="margin-top:12px">Warmwasser = Grundlast aus dem Modell; der Rest wird nach der geschätzten Heizenergie der Thermostate auf die Räume verteilt.</div></div>' +
+        '<div class="card escatter">' + this.scatter(past, model, unit) + "</div></div>"
     );
   }
 
-  elDetail(days, unit, pr, meters, now) {
+  elDetail(days, unit, elToday, pr, meters, now) {
+    const todayStart = midnight(now);
     const from = midnight(now, -CHART_DAYS);
     const list = (days || []).filter((r) => startOf(r) >= from && r.change != null);
     const total = sumChange(list);
-    const parts = breakdown(total, this.partSums(meters.plugs, from), "Sonstiges (ohne Messung)", 8);
+    const p30 = breakdown(total, this.partSums(meters.plugs, from), "Sonstiges (ohne Messung)", 8);
+    const pToday = breakdown(elToday, this.partSums(meters.plugs, todayStart), "Sonstiges (ohne Messung)", 8);
     const W = 600;
-    const H = 150;
+    const H = 130;
     const vals = list.map((r) => Math.max(0, r.change));
     const maxV = 4 * niceMax(Math.max.apply(null, vals.concat([0.01])) / 4);
     const slot = W / Math.max(1, list.length);
@@ -467,31 +415,38 @@ export class EnergyView {
       "Strom – Analyse",
       '<div class="erow one"><div class="card echart"><div class="chead"><div class="ctitle">Strom pro Tag</div><span class="cap" style="margin-left:auto">Ø ' + fmtNum(avg, 1) + " " + esc(unit) + "/Tag" +
         (pr.el != null && avg != null ? " · " + fmtNum(avg * pr.el, 2) + " €/Tag" : "") + "</span></div>" +
-        '<div class="plot"><div class="yax s"><span>' + fmtNum(maxV, 0) + "</span><span>" + fmtNum(maxV / 2, 0) + "</span><span>0</span></div>" +
-        '<div class="pwrap s"><svg viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" role="img" aria-label="Strom pro Tag">' +
+        '<div class="plot"><div class="yax s" style="height:' + H + 'px"><span>' + fmtNum(maxV, 0) + "</span><span>" + fmtNum(maxV / 2, 0) + "</span><span>0</span></div>" +
+        '<div class="pwrap" style="height:' + H + 'px"><svg viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" role="img" aria-label="Strom pro Tag">' +
         '<path d="M0 ' + (H - 0.5) + " H" + W + '" stroke="rgba(245,238,233,.25)" vector-effect="non-scaling-stroke"/>' +
         '<path d="' + (bars || "M0 0") + '" fill="' + COLORS.el + '"/></svg></div></div>' +
         '<div class="xax"><span>' + first + "</span><span>heute</span></div></div></div>" +
-        '<div class="erow one"><div class="card"><div class="ctitle">Letzte ' + CHART_DAYS + " Tage nach Gerät</div>" +
+        '<div class="erow half"><div class="card"><div class="ctitle">Nach Gerät · heute</div>' + this.partsList(pToday, unit) + "</div>" +
+        '<div class="card"><div class="ctitle">Letzte ' + CHART_DAYS + " Tage</div>" +
         '<div class="esum"><span><b>' + fmtNum(total, 0) + "</b> " + esc(unit) + "</span>" + (pr.el != null ? "<span>" + fmtNum(total * pr.el, 2) + " €</span>" : "") + "</div>" +
-        this.partsList(parts, unit) + "</div></div>"
+        this.partsList(p30, unit) + "</div></div>"
     );
   }
 
-  gasChart(rows, model, unit) {
+  gasChart(rows, model, unit, todayFc, analyse) {
     const W = 600;
-    const H = 150;
+    const H = 180;
+    const x0 = 0;
     const n = Math.max(rows.length, 1);
     const slot = W / n;
     const bw = Math.max(2, slot - 5);
-    const maxV = 4 * niceMax(Math.max.apply(null, rows.map((r) => Math.max(r.gas, expected(model, r.hdd) || 0)).concat([1])) / 4);
+    // Vier gleiche, runde Schritte für die Gitterlinien.
+    const maxV = 4 * niceMax(Math.max.apply(null, rows.map((r) => Math.max(r.gas, expected(model, r.hdd) || 0)).concat([1, todayFc || 0])) / 4);
     const base = H - 1;
     const gy = (v) => base - (v / maxV) * (H - 8);
     let bars = "";
+    let fbars = "";
     let exp = "";
+    const todayStart = midnight(Date.now());
     rows.forEach((r, i) => {
-      const x = i * slot + (slot - bw) / 2;
+      const x = x0 + i * slot + (slot - bw) / 2;
       bars += barPath(x, gy(r.gas), bw, base);
+      // Heute: Prognose bis Mitternacht hell hinter dem bisherigen Verbrauch.
+      if (r.start >= todayStart && todayFc != null && todayFc > r.gas) fbars += barPath(x, gy(todayFc), bw, base);
       const e = expected(model, r.hdd);
       if (e != null) exp += (exp ? " L" : "M") + (x + bw / 2).toFixed(1) + " " + gy(e).toFixed(1);
     });
@@ -502,31 +457,51 @@ export class EnergyView {
     if (temps.length) {
       tMin = Math.floor(Math.min.apply(null, temps.map((r) => r.temp)) - 1);
       tMax = Math.ceil(Math.max.apply(null, temps.map((r) => r.temp)) + 1);
-      const ty = (t) => 56 - ((t - tMin) / (tMax - tMin)) * 50;
+      const ty = (t) => 76 - ((t - tMin) / (tMax - tMin)) * 68;
       rows.forEach((r, i) => {
         if (r.temp == null) return;
         tLine += (tLine ? " L" : "M") + (i * slot + slot / 2).toFixed(1) + " " + ty(r.temp).toFixed(1);
       });
     }
+    const hi = this.hover != null && rows[this.hover] ? this.hover : null;
+    const hiBar = hi != null ? "M" + (hi * slot).toFixed(1) + " 0 h" + slot.toFixed(1) + " v" + H + " h" + (-slot).toFixed(1) + " Z" : "";
     const grid = [0.25, 0.5, 0.75].map((f) => "M0 " + (base - f * (H - 8)).toFixed(1) + " H" + W).join(" ");
+    let tip = "";
+    if (hi != null) {
+      const r = rows[hi];
+      const e = expected(model, r.hdd);
+      const left = ((hi + 0.5) / n) * 100;
+      tip =
+        '<div class="tip" style="' + (left > 70 ? "right:" + (100 - left + 3) + "%" : "left:" + (left + 3) + "%") + '"><b>' +
+        new Date(r.start).toLocaleDateString("de-DE", { weekday: "short", day: "numeric", month: "short" }) +
+        "</b><br>Verbrauch " + fmtNum(r.gas, 1) + " " + esc(unit) +
+        (e != null ? "<br>Erwartet " + fmtNum(e, 1) + " " + esc(unit) : "") +
+        (r.start >= todayStart && todayFc != null ? "<br>Prognose heute " + fmtNum(todayFc, 1) + " " + esc(unit) : "") +
+        (r.temp != null ? "<br>Außen " + fmtNum(r.temp, 1) + "°" : "") + "</div>";
+    }
     const first = rows[0] ? new Date(rows[0].start).toLocaleDateString("de-DE", { day: "numeric", month: "short" }) : "";
+    const mid = rows[Math.floor(rows.length / 2)] ? new Date(rows[Math.floor(rows.length / 2)].start).toLocaleDateString("de-DE", { day: "numeric", month: "short" }) : "";
     return (
-      '<div class="chead"><div class="ctitle">Gas pro Tag</div><div class="leg"><span><i class="sw2" style="background:' + COLORS.gas + '"></i>Verbrauch</span>' +
-      (model ? '<span><i class="dash"></i>Erwartet</span>' : "") + "</div></div>" +
-      '<div class="plot"><div class="yax s"><span>' + fmtNum(maxV, 0) + "</span><span>" + fmtNum(maxV / 2, 0) + "</span><span>0</span></div>" +
-      '<div class="pwrap s"><svg viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" role="img" aria-label="Gasverbrauch der letzten Tage">' +
+      '<div class="chead"><div class="ctitle">Gasverbrauch pro Tag</div><div class="leg"><span><i class="sw2" style="background:#e0683a"></i>Verbrauch</span>' +
+      (model ? '<span><i class="dash"></i>Erwartet</span>' : "") + "</div>" +
+      (analyse ? '<button class="emore" data-detail="gas">Analyse' + icon("chev") + "</button>" : "") + "</div>" +
+      '<div class="plot"><div class="yax"><span>' + fmtNum(maxV, 0) + "</span><span>" + fmtNum(maxV * 0.75, 0) + "</span><span>" + fmtNum(maxV * 0.5, 0) + "</span><span>" + fmtNum(maxV * 0.25, 0) + "</span><span>0</span></div>" +
+      '<div class="pwrap"><svg viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" role="img" aria-label="Gasverbrauch der letzten Tage">' +
       '<path d="' + grid + '" stroke="rgba(245,238,233,.08)" vector-effect="non-scaling-stroke"/>' +
       '<path d="M0 ' + base + " H" + W + '" stroke="rgba(245,238,233,.25)" vector-effect="non-scaling-stroke"/>' +
-      '<path d="' + (bars || "M0 0") + '" fill="' + COLORS.gas + '"/>' +
+      (hiBar ? '<path d="' + hiBar + '" fill="rgba(245,238,233,.07)"/>' : "") +
+      (fbars ? '<path d="' + fbars + '" fill="#e0683a" fill-opacity=".3"/>' : "") +
+      '<path d="' + (bars || "M0 0") + '" fill="#e0683a"/>' +
       (exp ? '<path d="' + exp + '" fill="none" stroke="#f5eee9" stroke-opacity=".8" stroke-width="2" stroke-dasharray="5 5" vector-effect="non-scaling-stroke"/>' : "") +
-      "</svg></div></div>" +
+      "</svg>" +
+      '<div class="hov">' + rows.map((r, i) => '<span data-day="' + i + '"></span>').join("") + "</div>" + tip + "</div></div>" +
       (temps.length
         ? '<div class="chead small"><i class="sw2" style="background:#5a86e8"></i><span class="cap">Außentemperatur, Tagesmittel</span><span class="cap" style="margin-left:auto">' + tMin + "° bis " + tMax + "°</span></div>" +
-          '<div class="pwrap t"><svg viewBox="0 0 ' + W + ' 60" preserveAspectRatio="none" aria-hidden="true">' +
-          (tMin < 0 && tMax > 0 ? '<path d="M0 ' + (56 - ((0 - tMin) / (tMax - tMin)) * 50).toFixed(1) + " H" + W + '" stroke="rgba(245,238,233,.25)" vector-effect="non-scaling-stroke"/>' : "") +
+          '<div class="pwrap t"><svg viewBox="0 0 ' + W + ' 80" preserveAspectRatio="none" aria-hidden="true">' +
+          (tMin < 0 && tMax > 0 ? '<path d="M0 ' + (76 - ((0 - tMin) / (tMax - tMin)) * 68).toFixed(1) + " H" + W + '" stroke="rgba(245,238,233,.25)" vector-effect="non-scaling-stroke"/>' : "") +
           '<path d="' + tLine + '" fill="none" stroke="#5a86e8" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg></div>'
         : "") +
-      '<div class="xax"><span>' + first + "</span><span>heute</span></div>"
+      '<div class="xax"><span>' + first + "</span><span>" + mid + "</span><span>heute</span></div>"
     );
   }
 
@@ -567,26 +542,25 @@ export class EnergyView {
 
   bind() {
     const el = this.host.el;
-    Array.prototype.forEach.call(el.querySelectorAll("[data-slot]"), (s) => {
-      const parts = s.getAttribute("data-slot").split(":");
-      const h = { chart: parts[0], i: parseInt(parts[1], 10) };
+    Array.prototype.forEach.call(el.querySelectorAll("[data-day]"), (s) => {
+      const i = parseInt(s.getAttribute("data-day"), 10);
       const on = () => {
-        if (!this.hover || this.hover.chart !== h.chart || this.hover.i !== h.i) {
-          this.hover = h;
+        if (this.hover !== i) {
+          this.hover = i;
           this.render();
         }
       };
       s.addEventListener("pointerenter", on);
       s.addEventListener("pointerdown", on);
     });
-    Array.prototype.forEach.call(el.querySelectorAll(".hov"), (hov) =>
+    const hov = el.querySelector(".hov");
+    if (hov)
       hov.addEventListener("pointerleave", (e) => {
-        if (e.pointerType === "mouse" && this.hover) {
+        if (e.pointerType === "mouse" && this.hover != null) {
           this.hover = null;
           this.render();
         }
-      })
-    );
+      });
     Array.prototype.forEach.call(el.querySelectorAll("[data-detail]"), (b) => {
       b.onclick = () => {
         this.detail = b.getAttribute("data-detail");

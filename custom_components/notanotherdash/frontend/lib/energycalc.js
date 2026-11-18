@@ -158,7 +158,7 @@ export function barPath(x, y, w, baseY) {
   );
 }
 
-// ---------- Zeitachse: heute detailliert, Historie logarithmisch gestaucht ----------
+// ---------- Stundenwerte und Tagesprognose ----------
 
 const HOUR = 3600000;
 
@@ -211,45 +211,6 @@ export function restOfDay(profile, now, restTotal) {
     out[t] = Math.max(0, v);
   });
   return out;
-}
-
-/**
- * Baut die Zeitachse: links Tage (vor 29 bis vor 2 Tagen, logarithmisch gestaucht),
- * rechts gestern und heute stündlich (48 Stunden), Zukunft als Prognose.
- * Werte als Verbrauch pro Stunde (Tage: Tagessumme / 24), damit eine gemeinsame Skala passt.
- * dayStats: period "day"; hours: hourMap; fc: restOfDay; split: Anteil der Breite für die Tage (0…1).
- */
-export function timeline(dayStats, hours, fc, now, split) {
-  const L = split == null ? 0.5 : split;
-  const todayStart = localMidnight(now);
-  const yStart = localMidnight(now, -1);
-  const end = localMidnight(now, 1);
-  const lnSpan = Math.log(30 / 2);
-  const ax = (ageDays) => L * (1 - Math.log(ageDays / 2) / lnSpan);
-  const dayVals = {};
-  (dayStats || []).forEach((r) => {
-    if (r.change != null && isFinite(r.change)) dayVals[localMidnight(startMs(r))] = Math.max(0, r.change);
-  });
-  const slots = [];
-  for (let age = 29; age >= 2; age--) {
-    const s = localMidnight(now, -age);
-    const total = s in dayVals ? dayVals[s] : null;
-    slots.push({ kind: "day", start: s, x0: ax(age + 1), x1: ax(age), total: total, value: total == null ? null : total / 24 });
-  }
-  const hw = (1 - L) / ((end - yStart) / HOUR);
-  for (let t = yStart, i = 0; t < end; t += HOUR, i++) {
-    const past = t + HOUR <= now;
-    const cur = !past && t <= now;
-    const actual = t in hours ? hours[t] : null;
-    const f = t in fc ? fc[t] : null;
-    slots.push({ kind: "hour", start: t, x0: L + i * hw, x1: L + (i + 1) * hw, value: actual, forecast: past ? null : f, current: cur });
-  }
-  return {
-    slots: slots,
-    nowX: L + ((now - yStart) / HOUR) * hw,
-    todayX: L + ((todayStart - yStart) / HOUR) * hw,
-    ageX: ax
-  };
 }
 
 /** Aufteilung mit Rest: parts [{name, value}] gegen Gesamtwert, sortiert, kleine Posten zu „Sonstige“. */

@@ -221,24 +221,18 @@ select.ent{margin-left:auto;max-width:340px;height:38px;padding:0 12px;border-ra
 .estats div span:last-child{margin-left:auto}
 .ebars .xax{padding-left:0}
 .efc{display:flex;flex-direction:column;justify-content:space-between;min-height:150px}
+.ecol{display:flex;flex-direction:column;gap:14px;min-width:0}
+.efc.mini{min-height:0;gap:6px}
+.efc.mini .v{font-size:26px;display:flex;align-items:baseline;gap:4px}
+.efc.mini .eur{margin-left:auto;font-size:15px}
 .erow.one{grid-template-columns:minmax(0,1fr)}
-.egrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;margin-top:14px}
-.ecard{display:flex;flex-direction:column;gap:8px}
+.erow.half{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.yax.s{height:130px}
+.chead .leg + .emore{margin-left:14px}
 .emore{margin-left:auto;display:inline-flex;align-items:center;gap:2px;height:32px;padding:0 10px 0 14px;border-radius:16px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:inherit;font-family:inherit;font-size:13.5px;font-weight:500;cursor:pointer}
 .emore .ic{width:15px;height:15px;color:var(--ink3)}
 .esum{display:flex;align-items:baseline;gap:14px;font-size:13.5px;color:var(--ink2);font-variant-numeric:tabular-nums}
 .esum b{font-size:22px;font-weight:400;color:var(--ink)}
-.efc2{margin-left:auto}
-.yax.s,.pwrap.s{height:150px}
-.hov.abs{display:block}
-.hov.abs span{position:absolute;top:0;bottom:0;flex:none}
-.xax.abs{position:relative;display:block;height:14px;margin-left:28px}
-.xax.abs span{position:absolute;top:0;transform:translateX(-50%);white-space:nowrap}
-.xax.abs span:first-child{transform:none}
-.xax.abs .now{color:var(--ink2)}
-.eunit{font-size:11px;margin-top:-2px}
-.efc7{font-size:12.5px}
-.eptitle{margin-top:4px}
 .eparts{display:flex;flex-direction:column;gap:5px}
 .card > .ctitle + .eparts,.card > .esum + .eparts{margin-top:10px}
 .epart{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(40px,1fr) 84px 38px;align-items:center;gap:10px;font-size:13px;font-variant-numeric:tabular-nums}
