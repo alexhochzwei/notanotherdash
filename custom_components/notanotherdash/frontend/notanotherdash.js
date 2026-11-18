@@ -8,7 +8,7 @@ import { icon, weatherIcon } from "./lib/icons.js";
 import { RoomView } from "./lib/room.js";
 import { EnergyView } from "./lib/energy.js";
 import { VacuumView } from "./lib/vacuum.js";
-import { ClimateView, LightView, CameraView } from "./lib/panels.js";
+import { ClimateView, LightView, CameraView, ScenesView } from "./lib/panels.js";
 import {
   buildModel,
   roomEntities,
@@ -326,7 +326,6 @@ class NotAnotherDashPanel extends HTMLElement {
       this._dockBtn("home", "Übersicht", "home", true) +
       this._dockBtn("thermo", "Klima", "climate") +
       this._dockBtn("bulb", "Licht", "light") +
-      this._dockBtn("camera", "Kameras", "camera") +
       this._dockBtn("bolt", "Energie", "energy") +
       this._dockBtn("vacuum", "Sauger", "vacuum") +
       "</nav>" +
@@ -351,6 +350,10 @@ class NotAnotherDashPanel extends HTMLElement {
       const view = b.getAttribute("data-view");
       if (view) this._showView(view);
       else this._toast(SOON);
+    });
+    sr.querySelector(".chips").addEventListener("click", (e) => {
+      const c = e.target.closest ? e.target.closest("[data-chip]") : null;
+      if (c && c.getAttribute("data-chip") === "scenes") this._showView("scenes");
     });
     this._bindGear(sr.querySelector(".gear"));
     this._roomView = new RoomView({
@@ -385,6 +388,7 @@ class NotAnotherDashPanel extends HTMLElement {
       climate: new ClimateView(panelHost),
       light: new LightView(panelHost),
       camera: new CameraView(panelHost),
+      scenes: new ScenesView(panelHost),
       vacuum: new VacuumView({
         el: viewEl,
         hass: () => this._hass,
@@ -529,6 +533,7 @@ class NotAnotherDashPanel extends HTMLElement {
     this._q(".chips").innerHTML =
       '<span class="chip">' + icon("bulb").replace('class="ic"', 'class="ic" style="color:#f2a65a"') + "Licht <small>" + t.lights + " an</small></span>" +
       '<span class="chip">' + icon("flame").replace('class="ic"', 'class="ic" style="color:#ff8f5c"') + "Heizung <small>" + t.heating + " aktiv</small></span>" +
+      '<button class="chip" data-chip="scenes">' + icon("play").replace('class="ic"', 'class="ic" style="color:#c9a6ff"') + "Szenen</button>" +
       '<span class="chip">' + icon("window").replace('class="ic"', 'class="ic" style="color:#a9c6ff"') + "Fenster <small>" + (t.windows ? t.windows + " offen" : "alle zu") + "</small></span>";
   }
 

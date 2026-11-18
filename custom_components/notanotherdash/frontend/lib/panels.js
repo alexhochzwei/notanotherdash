@@ -234,6 +234,57 @@ export class LightView extends BaseView {
 
 const CAMERA_REFRESH_MS = 10000;
 
+// ---------- Szenen ----------
+
+export class ScenesView extends BaseView {
+  watched() {
+    const m = this.host.model();
+    if (!m) return [];
+    return roomsWith(m, "scenes").reduce((a, r) => a.concat(r.scenes), []).concat(m.looseScenes || []);
+  }
+
+  render() {
+    const m = this.host.model();
+    const states = this.hass.states;
+    const groups = roomsWith(m, "scenes").map((r) => ({ id: r.id, name: r.name, scenes: r.scenes }));
+    const loose = ((m && m.looseScenes) || []).filter((id) => states[id]);
+    if (loose.length) groups.push({ id: null, name: "Ohne Raum", scenes: loose });
+    const el = this.host.el;
+    if (!groups.length) {
+      el.innerHTML = '<div class="ehint">Keine Szenen gefunden.</div>';
+      return;
+    }
+    const count = groups.reduce((n, g) => n + g.scenes.length, 0);
+    el.innerHTML =
+      '<div class="phead"><div><div class="ptitle">Szenen</div><div class="cap">' + count + " Szenen</div></div></div>" +
+      groups
+        .map(
+          (g) =>
+            '<section class="lroom">' +
+            (g.id ? '<button class="cname" data-openroom="' + esc(g.id) + '">' + esc(g.name) + icon("chev") + "</button>" : '<div class="cname">' + esc(g.name) + "</div>") +
+            '<div class="scgrid">' +
+            g.scenes
+              .map((id) => {
+                const st = states[id];
+                const name = shortName(st ? st.attributes.friendly_name || id : id, g.id ? g.name : "");
+                return '<button class="sc" data-scene="' + esc(id) + '"><span class="scic">' + icon("play") + '</span><span class="nm">' + esc(name) + "</span></button>";
+              })
+              .join("") +
+            "</div></section>"
+        )
+        .join("");
+    this.bindRoomLinks();
+    Array.prototype.forEach.call(el.querySelectorAll("[data-scene]"), (b) => {
+      b.onclick = () => {
+        this.call("scene", "turn_on", { entity_id: b.getAttribute("data-scene") });
+        b.classList.add("fired");
+        setTimeout(() => b.classList.remove("fired"), 900);
+        this.host.toast(b.querySelector(".nm").textContent + " aktiviert");
+      };
+    });
+  }
+}
+
 export class CameraView extends BaseView {
   constructor(host) {
     super(host);

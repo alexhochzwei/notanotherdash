@@ -28,6 +28,7 @@ export function buildModel(reg, settings, states) {
   });
 
   const rooms = {};
+  const looseScenes = []; // Szenen ohne Bereich
   (reg.areas || []).forEach((a) => {
     if (hiddenRooms.indexOf(a.area_id) >= 0) return;
     if ((a.labels || []).indexOf(hideLabel) >= 0) return;
@@ -54,7 +55,10 @@ export function buildModel(reg, settings, states) {
     if (e.device_id && hiddenDevices[e.device_id]) return;
     const areaId = e.area_id || (e.device_id ? deviceArea[e.device_id] : null);
     const room = areaId && rooms[areaId];
-    if (!room) return;
+    if (!room) {
+      if (!areaId && domainOf(e.entity_id) === "scene") looseScenes.push(e.entity_id);
+      return;
+    }
     const id = e.entity_id;
     const domain = domainOf(id);
     const st = states[id];
@@ -90,7 +94,7 @@ export function buildModel(reg, settings, states) {
   const sorted = floors.slice().sort((a, b) => floorRank(a.level) - floorRank(b.level));
   const result = sorted.filter((f) => f.rooms.length);
   if (noFloor.rooms.length) result.push(noFloor);
-  return { floors: result, rooms: rooms };
+  return { floors: result, rooms: rooms, looseScenes: looseScenes };
 }
 
 function floorRank(level) {
