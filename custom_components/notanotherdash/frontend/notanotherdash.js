@@ -701,6 +701,13 @@ class NotAnotherDashPanel extends HTMLElement {
         "</div></div>" +
         '<div class="row"><div><div class="t">Modell ab</div><div class="d">Nur Tage ab diesem Datum lernen, z. B. nach Änderungen an Heizkurve oder Thermostaten. Leer = ganze Historie</div></div>' +
         '<input type="date" class="dinput" data-date="model_since" value="' + esc(d.model_since || "") + '"></div>' +
+        '<div class="row"><div><div class="t">Gas-Grundpreis pro Monat</div><div class="d">Nur in der Monatskachel enthalten, nicht in Tages- und Stundenkosten</div></div>' +
+        '<input type="number" step="0.01" min="0" class="dinput" data-num="gas_base_price_month" value="' + esc(d.gas_base_price_month != null ? d.gas_base_price_month : "") + '" placeholder="€"></div>' +
+        '<div class="row"><div><div class="t">Korrektur alter Gaswerte</div><div class="d">' +
+        ((d.gas_corrections || []).length
+          ? (d.gas_corrections || []).map((c) => "bis " + esc(String(c.until).replace("T", " ")) + ": ÷ " + esc(String(c.factor).replace(".", ","))).join(" · ")
+          : "Keine") +
+        "</div></div></div>" +
         "</div>" +
         '<div class="group">' +
         this._entRow("vacuum_entity", "Saugroboter", "Roborock oder anderer Saugroboter", (id) => domainOf(id) === "vacuum") +
@@ -744,6 +751,7 @@ class NotAnotherDashPanel extends HTMLElement {
     el.querySelector(".done").onclick = () => this._saveSettings();
     el.querySelectorAll("[data-tab]").forEach((b) => (b.onclick = () => { this._tab = b.getAttribute("data-tab"); this._renderSettings(); }));
     el.querySelectorAll("select[data-key]").forEach((s) => (s.onchange = () => { d[s.getAttribute("data-key")] = s.value || null; }));
+    el.querySelectorAll("[data-num]").forEach((i) => (i.onchange = () => { const v = parseFloat(i.value); d[i.getAttribute("data-num")] = isFinite(v) ? v : null; }));
     el.querySelectorAll("[data-date]").forEach((i) => (i.onchange = () => { d[i.getAttribute("data-date")] = i.value || null; }));
     el.querySelectorAll("[data-seg] button").forEach((b) => (b.onclick = () => { d[b.parentNode.getAttribute("data-seg")] = parseInt(b.getAttribute("data-val"), 10); this._renderSettings(); }));
     el.querySelectorAll("[data-local] button").forEach((b) => (b.onclick = () => { local(b.parentNode.getAttribute("data-local"), b.getAttribute("data-val")); this._applyLook(); this._renderSettings(); }));

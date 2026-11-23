@@ -276,3 +276,68 @@ export function breakdown(total, parts, restName, maxItems) {
   const all = rest != null ? Math.max(total, sum) : sum;
   return items.map((p) => Object.assign({}, p, { share: all > 0 ? p.value / all : 0 }));
 }
+
+// ---------- Korrektur alter Gasdaten (Prellen des Impulszählers) ----------
+
+/**
+ * Korrekturen normalisieren: [{ until: "2026-10-24T05:56", factor: 1.62 }, …] → [{ until: ms, factor }],
+ * aufsteigend sortiert. Für einen Zeitpunkt gilt der Faktor des ersten Eintrags mit t < until, danach 1.
+ */
+export function parseCorrections(list) {
+  return (list || [])
+    .map((c) => ({ until: typeof c.until === "number" ? c.until : Date.parse(c.until), factor: Number(c.factor) }))
+    .filter((c) => isFinite(c.until) && c.factor > 0)
+    .sort((a, b) => a.until - b.until);
+}
+
+export function factorAt(corr, t) {
+  for (let i = 0; i < corr.length; i++) if (t < corr[i].until) return corr[i].factor;
+  return 1;
+}
+
+/** Stundenwerte korrigieren: change / Faktor zum Stundenbeginn (Grenzstunde anteilig). */
+export function correctHours(stats, corr) {
+  if (!corr.length) return stats;
+  return (stats || []).map((r) => {
+    if (r.change == null) return r;
+    const s = startMs(r);
+    const e = s + 3600000;
+    let v = 0;
+    // Stunde an den Grenzen zeitanteilig aufteilen.
+    let a = s;
+    corr.concat([{ until: Infinity, factor: 1 }]).forEach((c) => {
+      if (a >= e || c.until <= a) return;
+      const b = Math.min(e, c.until);
+      v += (r.change * (b - a)) / 3600000 / factorAt(corr, a);
+      a = b;
+    });
+    return Object.assign({}, r, { change: v });
+  });
+}
+
+/**
+ * Tageswerte korrigieren. Tage komplett vor einer Grenze: change / Faktor. Tage mit einer Grenze:
+ * aus den Stundenwerten dieses Tages (boundaryHours) neu summieren, ohne Stundenwerte zeitanteilig.
+ */
+export function correctDays(stats, corr, boundaryHours) {
+  if (!corr.length) return stats;
+  const hours = correctHours(boundaryHours || [], corr);
+  return (stats || []).map((r) => {
+    if (r.change == null) return r;
+    const s = startMs(r);
+    const e = s + 86400000;
+    const crosses = corr.some((c) => c.until > s && c.until < e);
+    if (!crosses) return Object.assign({}, r, { change: r.change / factorAt(corr, s) });
+    const hs = hours.filter((h) => startMs(h) >= s && startMs(h) < e && h.change != null);
+    if (hs.length) return Object.assign({}, r, { change: hs.reduce((a, h) => a + h.change, 0) });
+    let v = 0;
+    let a = s;
+    corr.concat([{ until: Infinity, factor: 1 }]).forEach((c) => {
+      if (a >= e || c.until <= a) return;
+      const b = Math.min(e, c.until);
+      v += (r.change * (b - a)) / 86400000 / factorAt(corr, a);
+      a = b;
+    });
+    return Object.assign({}, r, { change: v });
+  });
+}

@@ -150,3 +150,21 @@ test("mergeTemps bevorzugt den ersten Sensor", () => {
   assert.equal(m.length, 2);
   assert.equal(m[0].mean, 1);
 });
+
+import { parseCorrections, correctDays, correctHours } from "../custom_components/notanotherdash/frontend/lib/energycalc.js";
+
+test("Korrektur alter Gaswerte", () => {
+  const corr = parseCorrections([{ until: "2026-11-17T16:00:00Z", factor: 2 }, { until: "2026-10-24T06:00:00Z", factor: 1.5 }]);
+  assert.equal(corr[0].factor, 1.5);
+  const d0 = Date.parse("2026-10-20T00:00:00Z");
+  const dB = Date.parse("2026-11-17T00:00:00Z");
+  const dA = Date.parse("2026-11-20T00:00:00Z");
+  const hours = [];
+  for (let h = 0; h < 24; h++) hours.push({ start: dB + h * 3600000, change: 1 });
+  const days = correctDays([{ start: d0, change: 15 }, { start: dB, change: 24 }, { start: dA, change: 10 }], corr, hours);
+  assert.equal(days[0].change, 10);
+  assert.equal(days[1].change, 16 / 2 + 8);
+  assert.equal(days[2].change, 10);
+  const hs = correctHours([{ start: Date.parse("2026-11-17T15:30:00Z"), change: 2 }], corr);
+  assert.ok(Math.abs(hs[0].change - (1 / 2 + 1)) < 1e-9);
+});

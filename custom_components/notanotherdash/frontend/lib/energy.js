@@ -5,7 +5,7 @@
 
 import { fmtNum } from "./model.js";
 import { icon } from "./icons.js";
-import { fitModel, mergeTemps, blendToday, expected, forecastSum, monthTotals, sumChange, niceMax, barPath, hdd, hourMap, hourProfile, restOfDay, breakdown } from "./energycalc.js";
+import { parseCorrections, correctHours, correctDays, fitModel, mergeTemps, blendToday, expected, forecastSum, monthTotals, sumChange, niceMax, barPath, hdd, hourMap, hourProfile, restOfDay, breakdown } from "./energycalc.js";
 
 const DAYS = 365; // Lernfenster fürs Modell
 const HALF_LIFE_DAYS = 21; // Gewichtung: ein Tag zählt nach 3 Wochen noch halb
@@ -145,6 +145,15 @@ export class EnergyView {
     return { heat: heat, plugs: plugs };
   }
 
+  /** Stundenwerte der Tage, an denen ein Korrekturzeitraum endet (für exakte Tageswerte). */
+  async boundaryHours(gas, corr) {
+    if (!gas || !corr.length) return [];
+    const res = await Promise.all(
+      corr.map((c) => this.stats([gas], "hour", midnight(c.until), midnight(c.until, 1), ["change"]))
+    );
+    return res.reduce((a, r) => a.concat(r[gas] || []), []);
+  }
+
   /** Stündliche Wettervorhersage (für die Temperatur im Heute-Diagramm). */
   async hourlyForecast() {
     const id = this.host.weatherEntity ? this.host.weatherEntity() : null;
@@ -171,6 +180,8 @@ export class EnergyView {
     const el = st.electricity_entity;
     const m = this.meters();
     const parts = m.heat.concat(m.plugs);
+    // Alte Gaswerte sind durch Prellen des Impulszählers zu hoch; nur hier im Dashboard korrigiert.
+    const corr = parseCorrections(st.gas_corrections);
     const r = await Promise.all([
       this.stats(gas ? [gas] : [], "day", midnight(now, -DAYS), now, ["change"]),
       this.stats(temp ? [temp] : [], "day", midnight(now, -DAYS), now, ["mean"]),
@@ -181,14 +192,15 @@ export class EnergyView {
       this.stats(parts, "day", midnight(now, -CHART_DAYS), now, ["change"], { energy: "kWh" }),
       this.stats(temp ? [temp] : [], "hour", midnight(now), now, ["mean"]),
       this.hourlyForecast(),
-      this.stats(tempOld ? [tempOld] : [], "day", midnight(now, -DAYS), now, ["mean"])
+      this.stats(tempOld ? [tempOld] : [], "day", midnight(now, -DAYS), now, ["mean"]),
+      this.boundaryHours(gas, corr)
     ]);
     this.loading = false;
     this.data = {
-      gas: gas ? r[0][gas] || [] : [],
+      gas: gas ? correctDays(r[0][gas] || [], corr, r[10] || []) : [],
       temp: mergeTemps(temp ? r[1][temp] || [] : [], tempOld ? r[9][tempOld] || [] : []),
       elHours: el ? r[2][el] || [] : [],
-      gasHours: gas ? r[3][gas] || [] : [],
+      gasHours: gas ? correctHours(r[3][gas] || [], corr) : [],
       elDays: el ? r[4][el] || [] : [],
       prices: r[5] || {},
       parts: r[6] || {},
@@ -301,6 +313,13 @@ export class EnergyView {
       devTxt = Math.abs(p) + " % " + (p <= 0 ? "unter" : "über") + " Erwartung";
     }
     const monthName = new Date().toLocaleDateString("de-DE", { month: "long" });
+    // Monatskosten Gas: Arbeitspreis × Verbrauch plus Grundpreis (nur hier, nicht in Tages-/Stundenwerten).
+    const gasBase = parseFloat(st.gas_base_price_month);
+    const monthEur =
+      pr.gas != null && month.actual != null
+        ? '<div class="eur">' + fmtNum(month.actual * pr.gas + (gasBase > 0 ? gasBase : 0), 2) + " €<small>" +
+          (gasBase > 0 ? "inkl. " + fmtNum(gasBase, 2) + " € Grundpreis" : fmtNum(pr.gas, pr.gas < 1 ? 3 : 2) + " €/" + esc(gasUnit)) + "</small></div>"
+        : "";
 
     const meters = d.meters || { heat: [], plugs: [] };
     const chartRows = rows.filter((x) => x.start >= midnight(now, -CHART_DAYS));
@@ -321,7 +340,7 @@ export class EnergyView {
       (st.electricity_entity ? kpi("Strom heute", fmtNum(elToday, 1), elUnit, elSub, eur(elToday, pr.el, elUnit)) : st.power_entity ? kpi("Strom jetzt", powerTxt ? fmtNum(power, 0) : "–", powerUnit, "") : "") +
       (st.gas_entity
         ? kpi("Gas heute", today ? fmtNum(today.gas, 1) : "–", gasUnit, gasExp != null ? "Prognose " + fmtNum(gasExp, 1) + " " + esc(gasUnit) + (tToday != null ? " bei " + fmtNum(tToday, 1) + "°" : "") : "Noch keine Prognose", eur(today ? today.gas : null, pr.gas, gasUnit)) +
-          kpi("Gas " + monthName, fmtNum(month.actual, 0), gasUnit, devTxt || "Erwartung braucht 5 Tage Verlauf", eur(month.actual, pr.gas, gasUnit)) +
+          kpi("Gas " + monthName, fmtNum(month.actual, 0), gasUnit, devTxt || "Erwartung braucht 5 Tage Verlauf", monthEur) +
           kpi(
             "Prognose " + (fc7 ? fc7.days : 7) + " Tage",
             fc7 ? "~ " + fmtNum(fc7.sum, 0) : "–",
