@@ -171,12 +171,15 @@ export function monthTotals(rows, model, now, since) {
   const d = new Date(now);
   // Abweichung nur über Tage, für die das Modell gilt (ab Stichtag).
   const first = Math.max(new Date(d.getFullYear(), d.getMonth(), 1).getTime(), since || 0);
+  const monthStart = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+  const todayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const actual = rows.filter((r) => r.start >= monthStart).reduce((a, r) => a + r.gas, 0);
   const inMonth = rows.filter((r) => r.start >= first);
-  const actual = inMonth.reduce((a, r) => a + r.gas, 0);
-  const withT = inMonth.filter((r) => r.hdd != null);
+  // Abweichung nur über volle Tage (heute ist noch nicht vorbei), frühestens ab 3 Tagen.
+  const withT = inMonth.filter((r) => r.hdd != null && r.start < todayStart);
   const exp = model && withT.length ? withT.reduce((a, r) => a + expected(model, r.hdd), 0) : null;
   const actT = withT.reduce((a, r) => a + r.gas, 0);
-  return { actual: actual, expected: exp, deviation: exp ? actT / exp - 1 : null, days: inMonth.length };
+  return { actual: actual, expected: exp, deviation: exp && withT.length >= 3 ? actT / exp - 1 : null, days: inMonth.length };
 }
 
 /** Summe der Stundenwerte (period "hour", change). */

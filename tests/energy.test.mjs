@@ -39,11 +39,17 @@ test("Prognose aus Wettervorhersage", () => {
 
 test("Monatssumme und Abweichung", () => {
   const m = { base: 10, slope: 0 };
-  const rows = [{ start: new Date(2026, 9, 31).getTime(), gas: 99, hdd: 1 }, { start: day(1), gas: 9, hdd: 2 }, { start: day(2), gas: 9, hdd: 2 }];
-  const t = monthTotals(rows, m, day(2));
-  assert.equal(t.actual, 18);
-  assert.equal(t.expected, 20);
+  const rows = [{ start: new Date(2026, 9, 31).getTime(), gas: 99, hdd: 1 }];
+  for (let i = 1; i <= 4; i++) rows.push({ start: day(i), gas: 9, hdd: 2 });
+  rows.push({ start: day(5), gas: 3, hdd: 2 }); // heute, angebrochen
+  const t = monthTotals(rows, m, day(5) + 3600000);
+  assert.equal(t.actual, 39); // ganzer Monat inkl. heute
+  assert.equal(t.expected, 40); // nur volle Tage
   assert.ok(Math.abs(t.deviation + 0.1) < 1e-9);
+  // Stichtag: Abweichung erst ab Stichtag, Summe trotzdem ganzer Monat
+  const s = monthTotals(rows, m, day(5) + 3600000, day(3));
+  assert.equal(s.actual, 39);
+  assert.equal(s.deviation, null); // nur 2 volle Tage ab Stichtag
 });
 
 test("Hilfsfunktionen", () => {
