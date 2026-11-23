@@ -95,9 +95,61 @@ class NotAnotherDashPanel extends HTMLElement {
 
   set hass(hass) {
     const first = !this._hass;
-    this._hass = hass;
+    this._raw = hass;
+    this._hass = this._overlay();
     if (first) this._start();
     else if (this._model) this._update();
+  }
+
+  // ---------- Lichter sofort anzeigen ----------
+  // Nach einem Licht-Befehl zeigt das Dashboard den Zielzustand sofort an, bis HA ihn bestätigt
+  // (oder nach 8 s). Sonst bliebe bis zur Rückmeldung des Geräts der alte Zustand stehen.
+
+  _overlay() {
+    const raw = this._raw;
+    if (!raw) return raw;
+    const opt = this._optim || (this._optim = {});
+    const now = Date.now();
+    const fakes = {};
+    Object.keys(opt).forEach((id) => {
+      const p = opt[id];
+      const s = raw.states[id];
+      const done = s && s.state === p.state && (p.bri == null || p.state !== "on" || Math.abs((s.attributes.brightness || 0) - p.bri) <= 3);
+      if (!s || now > p.until || done) delete opt[id];
+      else fakes[id] = p.fake;
+    });
+    const h = Object.assign({}, raw);
+    if (Object.keys(fakes).length) h.states = Object.assign({}, raw.states, fakes);
+    h.callService = (domain, service, data, target, notify, ret) => {
+      this._optimistic(domain, service, data || {});
+      return raw.callService(domain, service, data, target, notify, ret);
+    };
+    return h;
+  }
+
+  _optimistic(domain, service, data) {
+    if (domain !== "light" || ["turn_on", "turn_off", "toggle"].indexOf(service) < 0 || !this._hass) return;
+    const ids = [].concat(data.entity_id || []);
+    if (!ids.length) return;
+    const until = Date.now() + 8000;
+    ids.forEach((id) => {
+      const cur = this._hass.states[id];
+      if (!cur || cur.state === "unavailable") return;
+      const on = cur.state === "on";
+      const state = service === "turn_off" ? "off" : service === "toggle" ? (on ? "off" : "on") : "on";
+      const bri = data.brightness_pct != null ? Math.round(data.brightness_pct * 2.55) : null;
+      const attrs = Object.assign({}, cur.attributes);
+      if (state === "off") attrs.brightness = null;
+      else if (bri != null) attrs.brightness = bri;
+      this._optim[id] = { state: state, bri: bri, until: until, fake: Object.assign({}, cur, { state: state, attributes: attrs }) };
+    });
+    this._hass = this._overlay();
+    if (this._model) this._update();
+    clearTimeout(this._optimTimer);
+    this._optimTimer = setTimeout(() => {
+      this._hass = this._overlay();
+      if (this._model) this._update();
+    }, 8100);
   }
 
   get hass() {
@@ -122,6 +174,7 @@ class NotAnotherDashPanel extends HTMLElement {
     this._unsubs = [];
     this._started = false;
     this._hass = null;
+    this._raw = null;
   }
 
   // ---------- Laden ----------

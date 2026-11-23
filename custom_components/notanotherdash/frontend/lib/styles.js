@@ -134,9 +134,10 @@ select.ent{margin-left:auto;max-width:340px;height:38px;padding:0 12px;border-ra
 
 .card.heat{position:relative;overflow:hidden;align-self:start;padding:18px;display:flex;flex-direction:column;gap:12px;border-radius:22px;border:1px solid var(--line);background:linear-gradient(170deg,rgba(255,143,92,.14),rgba(40,33,37,.5) 55%)}
 .heat > :not(.more):not(.graph){position:relative;flex:none}
-.graph{position:absolute;left:0;right:0;bottom:0;height:250px;pointer-events:none}
+.graph{position:relative;flex:none;height:50px;margin:0 -18px;pointer-events:none}
+.graph + .dialwrap{margin-top:-50px}
 .graph svg{position:absolute;left:0;top:0;width:100%;height:100%}
-.graph .axis{position:absolute;right:14px;bottom:8px;font-size:11px;color:rgba(245,238,233,.4)}
+.graph .axis{position:absolute;right:14px;top:0;font-size:11px;color:rgba(245,238,233,.4)}
 .more{position:absolute;right:10px;top:10px;width:32px;height:32px;border-radius:50%;border:0;background:rgba(0,0,0,.18);display:grid;place-items:center;cursor:pointer;color:rgba(245,238,233,.75);z-index:1}
 .more .ic{width:16px;height:16px}
 .target{display:flex;flex-direction:column;align-items:center;gap:4px;padding-top:4px}

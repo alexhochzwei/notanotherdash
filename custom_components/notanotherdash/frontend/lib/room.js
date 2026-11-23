@@ -23,6 +23,8 @@ const LONG_PRESS_MS = 550;
 const SWATCHES = [["Rot", 0, 85], ["Orange", 28, 90], ["Gelb", 48, 80], ["Grün", 120, 70], ["Türkis", 178, 70], ["Blau", 220, 80], ["Lila", 272, 70], ["Pink", 320, 65]];
 const DIAL = { cx: 138, cy: 400, r: 330, degPerK: 7, pxPerK: 40 };
 const HISTORY_HOURS = 24;
+const GRAPH_H = 50; // Höhe des Temperaturverlaufs zwischen Sollwert und Drehrad (px)
+const GRAPH_SPAN_K = 6; // Temperaturachse mindestens 6 K hoch
 
 function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -166,10 +168,10 @@ export class RoomView {
 
     let graph = "";
     if (this.host.showGraph() && this.history) {
-      const g = graphPaths(this.history.points, target, this.history.start, this.history.end, 276, 250);
+      const g = graphPaths(this.history.points, target, this.history.start, this.history.end, 276, GRAPH_H, GRAPH_SPAN_K);
       if (g) {
         graph =
-          '<div class="graph" aria-hidden="true"><svg viewBox="0 0 276 250" preserveAspectRatio="none">' +
+          '<div class="graph" aria-hidden="true"><svg viewBox="0 0 276 ' + GRAPH_H + '" preserveAspectRatio="none">' +
           '<path d="' + g.line + '" fill="none" stroke="#ff9a6b" stroke-opacity=".7" stroke-width="1.8" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>' +
           (g.target ? '<path d="' + g.target + '" fill="none" stroke="#f5eee9" stroke-opacity=".25" stroke-width="1.2" stroke-dasharray="4 5" vector-effect="non-scaling-stroke"/>' : "") +
           '</svg><span class="axis">24 h</span></div>';
@@ -182,9 +184,9 @@ export class RoomView {
 
     return (
       '<section class="card heat" aria-label="Heizung">' +
-      graph +
       '<button class="more" data-more="heat" aria-label="Heizung Details">' + icon("chev") + "</button>" +
       '<div class="target"><div class="tval">' + (target != null ? fmtNum(target, 1) + "°" : "–") + '</div><div class="tist">' + [ist, status].filter(Boolean).join(" · ") + "</div></div>" +
+      graph +
       '<div class="dialwrap">' +
       '<button class="dial" aria-label="Solltemperatur drehen: nach rechts wärmer, nach links kälter">' + this.dialSvg(t) + "</button>" +
       '<button class="dialend" style="left:10px" data-step="-1" aria-label="Kälter">' + icon("chevl") + "</button>" +
