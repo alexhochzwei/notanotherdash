@@ -37,6 +37,14 @@ function partName(st, id) {
   return n || id;
 }
 
+/** Achsenbeschriftung 0…top in Vierteln, mit so wenigen Nachkommastellen wie nötig. */
+function hourTicks(top) {
+  const v = [1, 0.75, 0.5, 0.25, 0].map((f) => top * f);
+  let d = 0;
+  while (d < 2 && v.some((x) => Math.abs(Number(x.toFixed(d)) - x) > 1e-9)) d++;
+  return v.map((x) => "<span>" + (x ? fmtNum(x, d) : "0") + "</span>").join("");
+}
+
 export class EnergyView {
   constructor(host) {
     // host: { el, hass(), settings(), forecast(), toast() }
@@ -401,6 +409,7 @@ export class EnergyView {
     const nowX = (((now - day0) / 86400000) * W).toFixed(1);
     return {
       max: maxV,
+      top: top,
       html:
         '<div class="pwrap" style="height:' + H + 'px"><svg viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" role="img" aria-label="' + esc(label) + '">' +
         '<path d="M0 ' + (H - 0.5) + " H" + W + '" stroke="rgba(245,238,233,.25)" vector-effect="non-scaling-stroke"/>' +
@@ -594,8 +603,13 @@ export class EnergyView {
       "</div>" +
       '<div class="xax' + (temps.length ? " tr" : "") + '"><span>' + first + "</span><span>" + mid + "</span><span>heute</span></div></div>" +
       (th
-        ? '<div class="gtoday"><div class="gtl"><span>Heute je Stunde</span><span>max. ' + fmtNum(th.max, 2) + " " + esc(unit) + "/h</span></div>" + th.html +
-          '<div class="xax" style="padding-left:0"><span>0</span><span>6</span><span>12</span><span>18</span><span>24</span></div>' +
+        ? '<div class="gtoday"><div class="gtl"><span>Heute je Stunde</span><span>max. ' + fmtNum(th.max, 2) + " " + esc(unit) + "/h</span></div>" +
+          '<div class="plot"><div class="yax">' + hourTicks(th.top) + "</div>" + th.html +
+          (temps.length
+            ? '<div class="yax r"><span>' + tMax + "°</span><span>" + Math.round(tMin + (tMax - tMin) * 0.75) + "°</span><span>" + Math.round((tMin + tMax) / 2) + "°</span><span>" + Math.round(tMin + (tMax - tMin) * 0.25) + "°</span><span>" + tMin + "°</span></div>"
+            : "") +
+          "</div>" +
+          '<div class="xax' + (temps.length ? " tr" : "") + '"><span>0</span><span>6</span><span>12</span><span>18</span><span>24</span></div>' +
           (today.sub ? '<div class="cap gsub">' + today.sub + "</div>" : "") + "</div>"
         : "") +
       "</div>"
