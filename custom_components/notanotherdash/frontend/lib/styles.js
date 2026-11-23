@@ -314,7 +314,9 @@ select.ent{margin-left:auto;max-width:340px;height:38px;padding:0 12px;border-ra
 .cnow{font-size:40px;font-weight:300;letter-spacing:-.02em;line-height:1.05;font-variant-numeric:tabular-nums}
 .cstate{font-size:13px;color:var(--ink2);min-height:17px}
 .cset{display:flex;align-items:center;gap:8px;margin-top:6px}
-.ctarget{flex:1;text-align:center;font-size:20px;font-weight:500;font-variant-numeric:tabular-nums}
+.ctarget{flex:1;position:relative;text-align:center;font-size:20px;font-weight:500;font-variant-numeric:tabular-nums;cursor:ew-resize;touch-action:none;-webkit-user-select:none;user-select:none;padding-bottom:10px}
+.ctarget b{font-weight:500}
+.cticks{position:absolute;left:0;bottom:0;width:100%;height:10px;pointer-events:none;-webkit-mask-image:linear-gradient(90deg,transparent,#000 25%,#000 75%,transparent);mask-image:linear-gradient(90deg,transparent,#000 25%,#000 75%,transparent)}
 .ctarget span{display:block;font-size:11px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--ink3)}
 .lroom{display:flex;flex-direction:column;gap:10px;margin-bottom:18px}
 .scgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}

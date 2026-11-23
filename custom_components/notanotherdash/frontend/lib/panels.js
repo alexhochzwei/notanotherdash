@@ -17,6 +17,25 @@ function roomsWith(model, key) {
   return out;
 }
 
+const WHEEL_PX = 28; // Soll-Rad in der Klima-Übersicht: Pixel je Kelvin
+
+/** Striche des Soll-Rads, mittig um t (viewBox -90…90 × 10), alle 0,5 K, ganze Grad länger. */
+function wheelTicks(t) {
+  let minor = "";
+  let major = "";
+  for (let k = Math.ceil((t - 4) * 2) / 2; k <= t + 4; k += 0.5) {
+    const x = ((k - t) * WHEEL_PX).toFixed(1);
+    if (Math.abs(x) > 90) continue;
+    if (k % 1 === 0) major += "M" + x + " 1 L" + x + " 10 ";
+    else minor += "M" + x + " 5 L" + x + " 10 ";
+  }
+  return (
+    '<path d="' + (minor || "M0 0") + '" stroke="#f5eee9" stroke-opacity=".3" stroke-width="1.2" vector-effect="non-scaling-stroke"/>' +
+    '<path d="' + (major || "M0 0") + '" stroke="#f5eee9" stroke-opacity=".6" stroke-width="1.6" vector-effect="non-scaling-stroke"/>' +
+    '<path d="M0 0 L0 10" stroke="#ff9a6b" stroke-width="2" vector-effect="non-scaling-stroke"/>'
+  );
+}
+
 class BaseView {
   constructor(host) {
     // host: { el, hass(), model(), settings(), toast(), openRoom(id) }
@@ -50,6 +69,11 @@ export class ClimateView extends BaseView {
   }
 
   render() {
+    // Während am Soll-Rad gezogen wird, nicht neu zeichnen (sonst reißt die Geste ab).
+    if (this.drag) {
+      this.dirty = true;
+      return;
+    }
     const rooms = roomsWith(this.host.model(), "climates");
     const el = this.host.el;
     if (!rooms.length) {
@@ -91,7 +115,9 @@ export class ClimateView extends BaseView {
           (s.hum != null ? " · " + Math.round(s.hum) + " %" : "") +
           "</div>" +
           '<div class="cset"><button class="round" data-cstep="-1" data-room="' + esc(r.id) + '" aria-label="' + esc(r.name) + ' kälter">' + icon("chevl") + "</button>" +
-          '<div class="ctarget"><span>Soll</span>' + (target != null ? fmtNum(target, 1) + "°" : "–") + "</div>" +
+          '<div class="ctarget" data-cwheel="' + esc(r.id) + '" aria-label="' + esc(r.name) + ': Solltemperatur ziehen, nach rechts wärmer"><span>Soll</span><b>' + (target != null ? fmtNum(target, 1) + "°" : "–") + "</b>" +
+          (target != null ? '<svg class="cticks" viewBox="-90 0 180 10" preserveAspectRatio="none" aria-hidden="true">' + wheelTicks(target) + "</svg>" : "") +
+          "</div>" +
           '<button class="round" data-cstep="1" data-room="' + esc(r.id) + '" aria-label="' + esc(r.name) + ' wärmer">' + icon("chev") + "</button></div>" +
           "</div>"
         );
@@ -124,11 +150,52 @@ export class ClimateView extends BaseView {
         this.host.toast(r.name + ": " + fmtNum(t, 1) + "°");
       }, 700);
     }));
+    q("[data-cwheel]").forEach((w) => this.bindWheel(w, rooms.filter((x) => x.id === w.getAttribute("data-cwheel"))[0]));
     q("[data-allpreset]").forEach((b) => (b.onclick = () => {
       const ids = all.filter((id) => states[id] && (states[id].attributes.preset_modes || []).indexOf(b.getAttribute("data-allpreset")) >= 0);
       this.call("climate", "set_preset_mode", { entity_id: ids, preset_mode: b.getAttribute("data-allpreset") });
       this.host.toast("Alle Räume: " + b.textContent);
     }));
+  }
+
+  /** Soll-Rad: waagrecht ziehen, WHEEL_PX px je Kelvin; beim Loslassen einmal senden. */
+  bindWheel(w, r) {
+    if (!r) return;
+    const b = w.querySelector("b");
+    const svg = w.querySelector(".cticks");
+    w.addEventListener("pointerdown", (e) => {
+      const range = climateRange(this.hass.states[r.climates[0]]);
+      if (range.target == null && !this.pending[r.id]) return;
+      try {
+        w.setPointerCapture(e.pointerId);
+      } catch (err) {}
+      const t0 = this.pending[r.id] ? this.pending[r.id].t : range.target;
+      this.drag = { x0: e.clientX, t0: t0, t: t0, range: range, moved: false };
+    });
+    w.addEventListener("pointermove", (e) => {
+      const g = this.drag;
+      if (!g) return;
+      if (!g.moved && Math.abs(e.clientX - g.x0) < 4) return;
+      g.moved = true;
+      const raw = Math.max(g.range.min, Math.min(g.range.max, g.t0 + (e.clientX - g.x0) / WHEEL_PX));
+      g.t = snap(raw, g.range.step, g.range.min, g.range.max);
+      b.textContent = fmtNum(g.t, 1) + "°";
+      if (svg) svg.innerHTML = wheelTicks(raw);
+    });
+    const end = () => {
+      const g = this.drag;
+      if (!g) return;
+      this.drag = null;
+      if (g.moved && g.t !== g.t0) {
+        this.pending[r.id] = { t: g.t, until: Date.now() + 8000 };
+        this.call("climate", "set_temperature", { entity_id: r.climates, temperature: g.t });
+        this.host.toast(r.name + ": " + fmtNum(g.t, 1) + "°");
+      }
+      this.dirty = false;
+      this.render();
+    };
+    w.addEventListener("pointerup", end);
+    w.addEventListener("pointercancel", end);
   }
 }
 
