@@ -24,7 +24,7 @@ const SWATCHES = [["Rot", 0, 85], ["Orange", 28, 90], ["Gelb", 48, 80], ["Grün"
 const DIAL = { cx: 138, cy: 400, r: 330, degPerK: 7, pxPerK: 40 };
 const HISTORY_HOURS = 24;
 const GRAPH_H = 50; // Höhe des Temperaturverlaufs zwischen Sollwert und Drehrad (px)
-const GRAPH_SPAN_K = 6; // Temperaturachse mindestens 6 K hoch
+const GRAPH_HALF_K = 1.5; // Temperaturachse ±1,5 K um den Sollwert, bei Bedarf erweitert
 
 function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -168,7 +168,7 @@ export class RoomView {
 
     let graph = "";
     if (this.host.showGraph() && this.history) {
-      const g = graphPaths(this.history.points, target, this.history.start, this.history.end, 276, GRAPH_H, GRAPH_SPAN_K);
+      const g = graphPaths(this.history.points, target, this.history.start, this.history.end, 276, GRAPH_H, GRAPH_HALF_K);
       if (g) {
         graph =
           '<div class="graph" aria-hidden="true"><svg viewBox="0 0 276 ' + GRAPH_H + '" preserveAspectRatio="none">' +

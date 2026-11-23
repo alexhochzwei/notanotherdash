@@ -408,18 +408,19 @@ export function smoothPoints(points, start, end, buckets, radius) {
 }
 
 /** Pfade für den Temperaturverlauf (geglättet): Linie, Fläche und Sollwertlinie in einer W×H-Box. */
-export function graphPaths(points, target, start, end, W, H, minSpan) {
+export function graphPaths(points, target, start, end, W, H, halfK) {
   if (points.length < 2) return null;
   const sm = smoothPoints(points, start, end, 48, 2);
-  const vals = sm.map((p) => p[1]).concat(target != null ? [target] : []);
-  let lo = Math.min.apply(null, vals) - 0.6;
-  let hi = Math.max.apply(null, vals) + 0.6;
-  // Mindestspanne der Achse, damit 1 K nicht wie ein Berg aussieht.
-  if (minSpan && hi - lo < minSpan) {
-    const mid = (hi + lo) / 2;
-    lo = mid - minSpan / 2;
-    hi = mid + minSpan / 2;
-  }
+  const data = sm.map((p) => p[1]);
+  const dMin = Math.min.apply(null, data);
+  const dMax = Math.max.apply(null, data);
+  // Achse: ±halfK um den Sollwert (Sollwertlinie mittig); weicht die Temperatur weiter ab,
+  // nur so weit wie nötig erweitern. Ohne Sollwert um die Mitte der Kurve.
+  const half = halfK || 1.5;
+  const mid = target != null ? target : (dMin + dMax) / 2;
+  const span = Math.max(half, mid - dMin, dMax - mid);
+  const lo = mid - span;
+  const hi = mid + span;
   const top = H * 0.16;
   const bottom = H * 0.92;
   const x = (t) => ((Math.max(start, t) - start) / (end - start)) * W;
