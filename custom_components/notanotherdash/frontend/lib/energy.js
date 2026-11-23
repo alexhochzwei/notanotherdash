@@ -622,11 +622,15 @@ export class EnergyView {
     const maxY = niceMax(Math.max.apply(null, pts.map((r) => r.gas).concat([1])));
     const sx = (h) => 24 + (h / maxX) * (W - 28);
     const sy = (g) => H - 12 - (g / maxY) * (H - 24);
+    // Tage vor „Modell ab“ blass, Tage im Modell in Orange.
     let dots = "";
+    let gray = "";
     pts.forEach((r) => {
       const cx = sx(r.hdd);
       const cy = Math.max(5, sy(r.gas));
-      dots += "M" + (cx - 4).toFixed(1) + " " + cy.toFixed(1) + " a4 4 0 1 0 8 0 a4 4 0 1 0 -8 0 ";
+      const d = "M" + (cx - 4).toFixed(1) + " " + cy.toFixed(1) + " a4 4 0 1 0 8 0 a4 4 0 1 0 -8 0 ";
+      if (this.since && r.start < this.since) gray += d;
+      else dots += d;
     });
     const reg = model ? "M" + sx(0) + " " + sy(Math.max(0, model.base)).toFixed(1) + " L" + sx(maxX) + " " + Math.max(4, sy(expected(model, maxX))).toFixed(1) : "";
     return (
@@ -636,7 +640,9 @@ export class EnergyView {
       '<text class="tk" x="0" y="' + (sy(maxY) + 4).toFixed(0) + '">' + fmtNum(maxY, 0) + '</text><text class="tk" x="0" y="' + (sy(maxY / 2) + 4).toFixed(0) + '">' + fmtNum(maxY / 2, 0) + "</text>" +
       '<text class="tk" x="24" y="' + H + '">0</text><text class="tk" x="' + (W - 16) + '" y="' + H + '">' + maxX + "</text>" +
       (reg ? '<path d="' + reg + '" stroke="#f5eee9" stroke-opacity=".8" stroke-width="2" stroke-dasharray="5 5"/>' : "") +
+      (gray ? '<path d="' + gray + '" fill="rgba(245,238,233,.28)" stroke="#262024" stroke-width="2"/>' : "") +
       '<path d="' + (dots || "M0 0") + '" fill="' + COLORS.gas + '" stroke="#262024" stroke-width="2"/></svg>' +
+      (gray ? '<div class="cap" style="text-align:right">grau: vor „Modell ab“, nicht im Modell</div>' : "") +
       '<div class="cap" style="text-align:right">Heizgradtage (' + fmtNum(this.baseT || 15, 1) + " °C − Tagesmittel)</div>" +
       '<div class="estats">' +
       (model

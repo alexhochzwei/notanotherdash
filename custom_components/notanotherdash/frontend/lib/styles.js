@@ -217,8 +217,9 @@ select.ent{margin-left:auto;max-width:340px;height:38px;padding:0 12px;border-ra
 .escatter svg{margin-top:6px}
 .tk{font-size:10.5px;fill:var(--ink3)}
 .estats{margin-top:auto;display:flex;flex-direction:column;gap:6px;font-size:13.5px;color:rgba(245,238,233,.85);font-variant-numeric:tabular-nums}
-.estats div{display:flex}
-.estats div span:last-child{margin-left:auto}
+.estats div{display:flex;gap:12px}
+.estats div span:first-child{flex:none}
+.estats div span:last-child{margin-left:auto;text-align:right}
 .ebars .xax{padding-left:0}
 .efc{display:flex;flex-direction:column;justify-content:space-between;min-height:150px}
 .dinput{margin-left:auto;height:40px;padding:0 12px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:inherit;font-family:inherit;font-size:15px;color-scheme:dark}
