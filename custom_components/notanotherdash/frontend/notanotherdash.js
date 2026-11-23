@@ -703,11 +703,6 @@ class NotAnotherDashPanel extends HTMLElement {
         '<input type="date" class="dinput" data-date="model_since" value="' + esc(d.model_since || "") + '"></div>' +
         '<div class="row"><div><div class="t">Gas-Grundpreis pro Monat</div><div class="d">Nur in der Monatskachel enthalten, nicht in Tages- und Stundenkosten</div></div>' +
         '<input type="number" step="0.01" min="0" class="dinput" data-num="gas_base_price_month" value="' + esc(d.gas_base_price_month != null ? d.gas_base_price_month : "") + '" placeholder="€"></div>' +
-        '<div class="row"><div><div class="t">Korrektur alter Gaswerte</div><div class="d">' +
-        ((d.gas_corrections || []).length
-          ? (d.gas_corrections || []).map((c) => "bis " + esc(String(c.until).replace("T", " ")) + ": ÷ " + esc(String(c.factor).replace(".", ","))).join(" · ")
-          : "Keine") +
-        "</div></div></div>" +
         "</div>" +
         '<div class="group">' +
         this._entRow("vacuum_entity", "Saugroboter", "Roborock oder anderer Saugroboter", (id) => domainOf(id) === "vacuum") +

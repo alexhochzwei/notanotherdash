@@ -5,7 +5,7 @@
 
 import { fmtNum } from "./model.js";
 import { icon } from "./icons.js";
-import { parseCorrections, correctHours, correctDays, fitModel, mergeTemps, blendToday, expected, forecastSum, monthTotals, sumChange, niceMax, barPath, hdd, hourMap, hourProfile, restOfDay, breakdown } from "./energycalc.js";
+import { fitModel, mergeTemps, blendToday, expected, forecastSum, monthTotals, sumChange, niceMax, barPath, hdd, hourMap, hourProfile, restOfDay, breakdown } from "./energycalc.js";
 
 const DAYS = 365; // Lernfenster fürs Modell
 const HALF_LIFE_DAYS = 21; // Gewichtung: ein Tag zählt nach 3 Wochen noch halb
@@ -145,15 +145,6 @@ export class EnergyView {
     return { heat: heat, plugs: plugs };
   }
 
-  /** Stundenwerte der Tage, an denen ein Korrekturzeitraum endet (für exakte Tageswerte). */
-  async boundaryHours(gas, corr) {
-    if (!gas || !corr.length) return [];
-    const res = await Promise.all(
-      corr.map((c) => this.stats([gas], "hour", midnight(c.until), midnight(c.until, 1), ["change"]))
-    );
-    return res.reduce((a, r) => a.concat(r[gas] || []), []);
-  }
-
   /** Stündliche Wettervorhersage (für die Temperatur im Heute-Diagramm). */
   async hourlyForecast() {
     const id = this.host.weatherEntity ? this.host.weatherEntity() : null;
@@ -180,8 +171,6 @@ export class EnergyView {
     const el = st.electricity_entity;
     const m = this.meters();
     const parts = m.heat.concat(m.plugs);
-    // Alte Gaswerte sind durch Prellen des Impulszählers zu hoch; nur hier im Dashboard korrigiert.
-    const corr = parseCorrections(st.gas_corrections);
     const r = await Promise.all([
       this.stats(gas ? [gas] : [], "day", midnight(now, -DAYS), now, ["change"]),
       this.stats(temp ? [temp] : [], "day", midnight(now, -DAYS), now, ["mean"]),
@@ -192,15 +181,14 @@ export class EnergyView {
       this.stats(parts, "day", midnight(now, -CHART_DAYS), now, ["change"], { energy: "kWh" }),
       this.stats(temp ? [temp] : [], "hour", midnight(now), now, ["mean"]),
       this.hourlyForecast(),
-      this.stats(tempOld ? [tempOld] : [], "day", midnight(now, -DAYS), now, ["mean"]),
-      this.boundaryHours(gas, corr)
+      this.stats(tempOld ? [tempOld] : [], "day", midnight(now, -DAYS), now, ["mean"])
     ]);
     this.loading = false;
     this.data = {
-      gas: gas ? correctDays(r[0][gas] || [], corr, r[10] || []) : [],
+      gas: gas ? r[0][gas] || [] : [],
       temp: mergeTemps(temp ? r[1][temp] || [] : [], tempOld ? r[9][tempOld] || [] : []),
       elHours: el ? r[2][el] || [] : [],
-      gasHours: gas ? correctHours(r[3][gas] || [], corr) : [],
+      gasHours: gas ? r[3][gas] || [] : [],
       elDays: el ? r[4][el] || [] : [],
       prices: r[5] || {},
       parts: r[6] || {},
