@@ -221,6 +221,7 @@ select.ent{margin-left:auto;max-width:340px;height:38px;padding:0 12px;border-ra
 .estats div span:last-child{margin-left:auto}
 .ebars .xax{padding-left:0}
 .efc{display:flex;flex-direction:column;justify-content:space-between;min-height:150px}
+.dinput{margin-left:auto;height:40px;padding:0 12px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:inherit;font-family:inherit;font-size:15px;color-scheme:dark}
 .gplot{display:grid;grid-template-columns:minmax(0,1fr) 27%;gap:20px;margin-top:8px}
 .gplot .plot{margin-top:0}
 .gtoday{position:relative;display:flex;flex-direction:column;padding-left:20px;border-left:1px solid var(--line)}

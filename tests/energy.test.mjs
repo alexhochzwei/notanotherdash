@@ -115,3 +115,38 @@ test("fitModel lernt die Heizgrenze", () => {
   assert.ok(fit.model.r2 > 0.999);
   assert.equal(fitModel(gas, temp, 15).model.baseT, 15);
 });
+
+import { blendToday, mergeTemps } from "../custom_components/notanotherdash/frontend/lib/energycalc.js";
+
+test("Gewichtung folgt neueren Tagen", () => {
+  const day = 86400000;
+  const now = Date.UTC(2026, 10, 23);
+  const gas = [];
+  const temp = [];
+  for (let i = 120; i >= 1; i--) {
+    const start = now - i * day;
+    const t = 2 + (i % 10);
+    temp.push({ start: start, mean: t });
+    const slope = i > 20 ? 3 : 1.5; // früher doppelt so viel je Heizgradtag
+    gas.push({ start: start, change: 5 + slope * Math.max(0, 15 - t) });
+  }
+  const flat = fitModel(gas, temp, 15, now);
+  const w = fitModel(gas, temp, 15, now, 7);
+  assert.ok(flat.model.slope > 2.5);
+  assert.ok(Math.abs(w.model.slope - 1.5) < 0.4);
+});
+
+test("blendToday mischt Modell und Ist", () => {
+  assert.equal(blendToday(28, 0, 0), 28);
+  assert.ok(Math.abs(blendToday(28, 5, 0.5) - 19) < 1e-9);
+  assert.ok(blendToday(28, 30, 0.9) >= 30);
+  assert.equal(blendToday(null, 6, 0.5), 12);
+});
+
+test("mergeTemps bevorzugt den ersten Sensor", () => {
+  const a = [{ start: 1000, mean: 1 }];
+  const b = [{ start: 1000, mean: 5 }, { start: 1000 + 86400000, mean: 6 }];
+  const m = mergeTemps(a, b);
+  assert.equal(m.length, 2);
+  assert.equal(m[0].mean, 1);
+});

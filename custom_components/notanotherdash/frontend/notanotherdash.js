@@ -695,10 +695,13 @@ class NotAnotherDashPanel extends HTMLElement {
         this._entRow("gas_entity", "Gaszähler", "Zählerstand (kWh oder m³) mit Langzeitstatistik", (id, s) => domainOf(id) === "sensor" && isTotal(s) && (s.attributes.device_class === "gas" || s.attributes.device_class === "energy")) +
         this._entRow("electricity_entity", "Stromzähler", "Zählerstand in kWh", (id, s) => domainOf(id) === "sensor" && isTotal(s) && s.attributes.device_class === "energy") +
         this._entRow("power_entity", "Aktuelle Leistung", "Strom jetzt in W", (id, s) => domainOf(id) === "sensor" && s.attributes.device_class === "power") +
-        this._entRow("energy_temp_entity", "Außentemperatur für Energie", "Mit Langzeitstatistik. Leer = wie Kopfzeile", (id, s) => domainOf(id) === "sensor" && (s.attributes.device_class === "temperature" || s.attributes.unit_of_measurement === "°C")) +
+        this._entRow("energy_temp_entity", "Außentemperatur für Energie (Historie)", "Ergänzt ältere Tage, für die der Sensor der Kopfzeile noch keine Werte hat", (id, s) => domainOf(id) === "sensor" && (s.attributes.device_class === "temperature" || s.attributes.unit_of_measurement === "°C")) +
         '<div class="row"><div><div class="t">Heizgrenze</div><div class="d">Ab dieser Außentemperatur wird nicht mehr geheizt (Basis der Heizgradtage). Auto: aus dem Verlauf gelernt</div></div><div class="seg" data-seg="hdd_base">' +
         [0, 12, 15, 18].map((n) => '<button data-val="' + n + '" class="' + ((d.hdd_base || 0) === n ? "on" : "") + '">' + (n ? n + "°" : "Auto") + "</button>").join("") +
-        "</div></div></div>" +
+        "</div></div>" +
+        '<div class="row"><div><div class="t">Modell ab</div><div class="d">Nur Tage ab diesem Datum lernen, z. B. nach Änderungen an Heizkurve oder Thermostaten. Leer = ganze Historie</div></div>' +
+        '<input type="date" class="dinput" data-date="model_since" value="' + esc(d.model_since || "") + '"></div>' +
+        "</div>" +
         '<div class="group">' +
         this._entRow("vacuum_entity", "Saugroboter", "Roborock oder anderer Saugroboter", (id) => domainOf(id) === "vacuum") +
         '<div class="row"><div><div class="t">Räume zuordnen</div><div class="d">Lädt die Räume aus der Roborock-Karte. Danach jedem Bereich seinen Roborock-Raum zuweisen.</div></div>' +
@@ -741,6 +744,7 @@ class NotAnotherDashPanel extends HTMLElement {
     el.querySelector(".done").onclick = () => this._saveSettings();
     el.querySelectorAll("[data-tab]").forEach((b) => (b.onclick = () => { this._tab = b.getAttribute("data-tab"); this._renderSettings(); }));
     el.querySelectorAll("select[data-key]").forEach((s) => (s.onchange = () => { d[s.getAttribute("data-key")] = s.value || null; }));
+    el.querySelectorAll("[data-date]").forEach((i) => (i.onchange = () => { d[i.getAttribute("data-date")] = i.value || null; }));
     el.querySelectorAll("[data-seg] button").forEach((b) => (b.onclick = () => { d[b.parentNode.getAttribute("data-seg")] = parseInt(b.getAttribute("data-val"), 10); this._renderSettings(); }));
     el.querySelectorAll("[data-local] button").forEach((b) => (b.onclick = () => { local(b.parentNode.getAttribute("data-local"), b.getAttribute("data-val")); this._applyLook(); this._renderSettings(); }));
     el.querySelectorAll("[data-tint]").forEach((b) => (b.onclick = () => { d.tint = b.getAttribute("data-tint"); this._renderSettings(); }));

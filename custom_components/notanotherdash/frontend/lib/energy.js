@@ -5,9 +5,10 @@
 
 import { fmtNum } from "./model.js";
 import { icon } from "./icons.js";
-import { fitModel, expected, forecastSum, monthTotals, sumChange, niceMax, barPath, hdd, hourMap, hourProfile, restOfDay, breakdown } from "./energycalc.js";
+import { fitModel, mergeTemps, blendToday, expected, forecastSum, monthTotals, sumChange, niceMax, barPath, hdd, hourMap, hourProfile, restOfDay, breakdown } from "./energycalc.js";
 
 const DAYS = 365; // Lernfenster fürs Modell
+const HALF_LIFE_DAYS = 21; // Gewichtung: ein Tag zählt nach 3 Wochen noch halb
 const CHART_DAYS = 30; // Tage in den Detailansichten
 const PROFILE_DAYS = 7; // Tage für das Stundenprofil der Prognose
 const REFRESH_MS = 10 * 60000;
@@ -90,18 +91,28 @@ export class EnergyView {
   async prices(gas, el) {
     try {
       const prefs = await this.hass.callWS({ type: "energy/get_prefs" });
-      const out = {};
       const states = this.hass.states;
-      (prefs.energy_sources || []).forEach((src) => {
+      const srcs = prefs.energy_sources || [];
+      const priceOf = (src) => {
         let price = src.number_energy_price;
         if (src.entity_energy_price && states[src.entity_energy_price]) {
           const v = parseFloat(states[src.entity_energy_price].state);
           if (isFinite(v)) price = v;
         }
-        if (price == null || !isFinite(price)) return;
-        if (src.type === "gas" && src.stat_energy_from === gas) out.gas = price;
-        if (src.type === "grid" && src.stat_energy_from === el) out.el = price;
-      });
+        return price != null && isFinite(price) ? price : null;
+      };
+      // Passender Zähler zuerst; sonst die einzige Quelle dieses Typs (z. B. anderer Sensor für denselben Zähler).
+      const pick = (type, id) => {
+        const list = srcs.filter((x) => x.type === type);
+        const exact = list.filter((x) => x.stat_energy_from === id)[0];
+        const src = exact || (list.length === 1 ? list[0] : null);
+        return src ? priceOf(src) : null;
+      };
+      const out = {};
+      const g = pick("gas", gas);
+      const e = pick("grid", el);
+      if (g != null) out.gas = g;
+      if (e != null) out.el = e;
       return out;
     } catch (e) {
       return {};
@@ -153,8 +164,10 @@ export class EnergyView {
     this.loading = true;
     const now = Date.now();
     const gas = st.gas_entity;
-    // Energie kann einen eigenen Außensensor haben (z. B. solange ein neuer Helfer noch keine Historie hat).
-    const temp = st.energy_temp_entity || st.outdoor_temp_entity;
+    // Außentemperatur fürs Modell: der Sensor der Kopfzeile, wo er Tageswerte hat; für ältere Tage
+    // ergänzt um den Energie-Sensor (z. B. solange ein neuer Helfer noch keine lange Historie hat).
+    const temp = st.outdoor_temp_entity || st.energy_temp_entity;
+    const tempOld = st.energy_temp_entity && st.energy_temp_entity !== temp ? st.energy_temp_entity : null;
     const el = st.electricity_entity;
     const m = this.meters();
     const parts = m.heat.concat(m.plugs);
@@ -167,12 +180,13 @@ export class EnergyView {
       this.prices(gas, el),
       this.stats(parts, "day", midnight(now, -CHART_DAYS), now, ["change"], { energy: "kWh" }),
       this.stats(temp ? [temp] : [], "hour", midnight(now), now, ["mean"]),
-      this.hourlyForecast()
+      this.hourlyForecast(),
+      this.stats(tempOld ? [tempOld] : [], "day", midnight(now, -DAYS), now, ["mean"])
     ]);
     this.loading = false;
     this.data = {
       gas: gas ? r[0][gas] || [] : [],
-      temp: temp ? r[1][temp] || [] : [],
+      temp: mergeTemps(temp ? r[1][temp] || [] : [], tempOld ? r[9][tempOld] || [] : []),
       elHours: el ? r[2][el] || [] : [],
       gasHours: gas ? r[3][gas] || [] : [],
       elDays: el ? r[4][el] || [] : [],
@@ -215,14 +229,21 @@ export class EnergyView {
     const pr = d.prices || {};
 
     // Gasmodell (Heizgrenze fest oder gelernt).
-    const fit = fitModel(d.gas, d.temp, st.hdd_base || null, todayStart);
+    // Stichtag „Modell ab“: nur Tage ab diesem Datum lernen (lokale Mitternacht).
+    let since = null;
+    if (st.model_since && /^\d{4}-\d{2}-\d{2}$/.test(st.model_since)) {
+      const p = st.model_since.split("-").map(Number);
+      since = new Date(p[0], p[1] - 1, p[2]).getTime();
+    }
+    this.since = since;
+    const fit = fitModel(d.gas, d.temp, st.hdd_base || null, todayStart, HALF_LIFE_DAYS, since);
     const model = fit.model;
     const base = model ? model.baseT : fit.baseT;
     this.baseT = base;
     const rows = fit.rows;
     const past = rows.filter((x) => x.start < todayStart);
     const today = rows.filter((x) => x.start >= todayStart)[0] || null;
-    const month = monthTotals(rows, model, now);
+    const month = monthTotals(rows, model, now, since);
     const fcList = this.host.forecast();
     const fc7 = forecastSum(model, fcList, 7, base);
 
@@ -247,9 +268,16 @@ export class EnergyView {
     let tToday = null;
     if (fToday && fToday.temperature != null) tToday = fToday.templow != null ? (fToday.temperature + fToday.templow) / 2 : fToday.temperature;
     else if (today && today.temp != null) tToday = today.temp;
-    const gasExp = model && tToday != null ? expected(model, hdd(tToday, base)) : null;
+    const gasModelExp = model && tToday != null ? expected(model, hdd(tToday, base)) : null;
     const gasProfile = hourProfile(d.gasHours, todayStart);
     const gasCur = gasH[curHour] || 0;
+    // Anteil des typischen Tagesverbrauchs, der bis jetzt üblicherweise schon angefallen ist.
+    const profSum = gasProfile.reduce((a, v) => a + v, 0);
+    const hNow = new Date(now).getHours() + new Date(now).getMinutes() / 60;
+    let profDone = 0;
+    gasProfile.forEach((v, h) => (profDone += v * Math.max(0, Math.min(1, hNow - h))));
+    const done = profSum > 0 ? profDone / profSum : hNow / 24;
+    const gasExp = d.gasHours.length ? blendToday(gasModelExp, gasToday, done) : gasModelExp;
     const gasRestTarget = gasExp != null ? Math.max(0, gasExp - (gasToday - gasCur)) : null;
     const gasFc = restOfDay(gasProfile, now, gasRestTarget);
     const gasFcTotal = d.gasHours.length
@@ -292,7 +320,7 @@ export class EnergyView {
       '<div class="ekpis">' +
       (st.electricity_entity ? kpi("Strom heute", fmtNum(elToday, 1), elUnit, elSub, eur(elToday, pr.el, elUnit)) : st.power_entity ? kpi("Strom jetzt", powerTxt ? fmtNum(power, 0) : "–", powerUnit, "") : "") +
       (st.gas_entity
-        ? kpi("Gas heute", today ? fmtNum(today.gas, 1) : "–", gasUnit, gasExp != null ? "Erwartet " + fmtNum(gasExp, 1) + " " + esc(gasUnit) + (tToday != null ? " bei " + fmtNum(tToday, 1) + "°" : "") : "Noch keine Prognose", eur(today ? today.gas : null, pr.gas, gasUnit)) +
+        ? kpi("Gas heute", today ? fmtNum(today.gas, 1) : "–", gasUnit, gasExp != null ? "Prognose " + fmtNum(gasExp, 1) + " " + esc(gasUnit) + (tToday != null ? " bei " + fmtNum(tToday, 1) + "°" : "") : "Noch keine Prognose", eur(today ? today.gas : null, pr.gas, gasUnit)) +
           kpi("Gas " + monthName, fmtNum(month.actual, 0), gasUnit, devTxt || "Erwartung braucht 5 Tage Verlauf", eur(month.actual, pr.gas, gasUnit)) +
           kpi(
             "Prognose " + (fc7 ? fc7.days : 7) + " Tage",
@@ -596,6 +624,7 @@ export class EnergyView {
         ? '<div><span>Grundlast (Warmwasser)</span><span>' + fmtNum(model.base, 1) + " " + esc(unit) + "/Tag</span></div>" +
           "<div><span>Je Heizgradtag</span><span>" + fmtNum(model.slope, 1) + " " + esc(unit) + "</span></div>" +
           "<div><span>Heizgrenze" + (this.host.settings().hdd_base ? "" : " (gelernt)") + "</span><span>" + fmtNum(model.baseT, 1) + " °C</span></div>" +
+          "<div><span>Gewichtung</span><span>" + (this.since ? "ab " + new Date(this.since).toLocaleDateString("de-DE", { day: "numeric", month: "numeric", year: "2-digit" }) + ", " : "") + "Halbwertszeit " + HALF_LIFE_DAYS + " Tage</span></div>" +
           "<div><span>Passgenauigkeit (R²)</span><span>" + fmtNum(model.r2, 2) + " · " + model.n + " Tage" + (model.excluded ? ", " + model.excluded + " ausgelassen" : "") + "</span></div>"
         : '<div class="cap">Für die Ausgleichsgerade braucht es mindestens 5 Tage mit Gas- und Temperaturwerten.</div>') +
       "</div>"

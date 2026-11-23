@@ -36,20 +36,27 @@ export function dailyRows(gasStats, tempStats, base) {
     .sort((a, b) => a.start - b.start);
 }
 
-/** Lineare Regression gas ~ a + b·hdd (kleinste Quadrate). Braucht mindestens 5 Tage mit Streuung. */
+/**
+ * Lineare Regression gas ~ a + b·hdd (gewichtete kleinste Quadrate, Gewicht r.w, Standard 1).
+ * Braucht mindestens 5 Tage mit Streuung.
+ */
 export function regression(rows) {
   const pts = rows.filter((r) => r.hdd != null && r.gas != null);
   if (pts.length < 5) return null;
   const n = pts.length;
-  const mx = pts.reduce((a, r) => a + r.hdd, 0) / n;
-  const my = pts.reduce((a, r) => a + r.gas, 0) / n;
+  const wt = (r) => (r.w == null ? 1 : r.w);
+  const W = pts.reduce((a, r) => a + wt(r), 0);
+  if (!(W > 0)) return null;
+  const mx = pts.reduce((a, r) => a + wt(r) * r.hdd, 0) / W;
+  const my = pts.reduce((a, r) => a + wt(r) * r.gas, 0) / W;
   let sxy = 0;
   let sxx = 0;
   let syy = 0;
   pts.forEach((r) => {
-    sxy += (r.hdd - mx) * (r.gas - my);
-    sxx += (r.hdd - mx) * (r.hdd - mx);
-    syy += (r.gas - my) * (r.gas - my);
+    const w = wt(r);
+    sxy += w * (r.hdd - mx) * (r.gas - my);
+    sxx += w * (r.hdd - mx) * (r.hdd - mx);
+    syy += w * (r.gas - my) * (r.gas - my);
   });
   if (sxx < 1e-9) return null;
   const slope = sxy / sxx;
@@ -67,7 +74,9 @@ export function robustRegression(rows) {
   const first = regression(pts);
   if (!first) return null;
   const res = pts.map((r) => r.gas - (first.base + first.slope * r.hdd));
-  const sd = Math.sqrt(res.reduce((a, v) => a + v * v, 0) / res.length);
+  const wt = (r) => (r.w == null ? 1 : r.w);
+  const W = pts.reduce((a, r) => a + wt(r), 0);
+  const sd = Math.sqrt(pts.reduce((a, r, i) => a + wt(r) * res[i] * res[i], 0) / W);
   if (!(sd > 0)) return Object.assign(first, { excluded: rows.length - pts.length });
   const kept = pts.filter((r, i) => Math.abs(res[i]) <= 2.5 * sd);
   const second = regression(kept) || first;
@@ -79,15 +88,25 @@ export function robustRegression(rows) {
  * zwischen 12 und 18 °C in 0,5er-Schritten so gewählt, dass R² am größten ist.
  * Ergebnis: { model (mit baseT), rows } – rows mit hdd zur gewählten Heizgrenze.
  */
-export function fitModel(gasStats, tempStats, base, before) {
+export function fitModel(gasStats, tempStats, base, before, halfLifeDays, since) {
+  // Gewichtung: Tage verlieren mit dem Alter an Gewicht (Halbwertszeit), damit das Modell
+  // Änderungen an Heizung/Regelung folgt. Ohne Halbwertszeit zählen alle Tage gleich.
+  const ref = before != null ? before : Date.now();
+  const weigh = (rows) => {
+    if (!halfLifeDays) return rows;
+    rows.forEach((r) => {
+      r.w = Math.pow(0.5, Math.max(0, (ref - r.start) / 86400000) / halfLifeDays);
+    });
+    return rows;
+  };
   const cands = base ? [base] : [];
   if (!base) for (let b = 12; b <= 18.001; b += 0.5) cands.push(Math.round(b * 10) / 10);
   // Heizgrenze nach R² der einfachen Regression wählen (Ausreißerfilter würde den Vergleich verzerren),
   // das Modell selbst dann robust anpassen.
   let best = null;
   cands.forEach((b) => {
-    const rows = dailyRows(gasStats, tempStats, b);
-    const past = before != null ? rows.filter((r) => r.start < before) : rows;
+    const rows = weigh(dailyRows(gasStats, tempStats, b));
+    const past = rows.filter((r) => (before == null || r.start < before) && (since == null || r.start >= since));
     const m = regression(past.filter((r) => r.gas > 0));
     if (m && (!best || m.r2 > best.r2 + 1e-9)) best = { r2: m.r2, b: b, rows: rows, past: past };
   });
@@ -98,7 +117,35 @@ export function fitModel(gasStats, tempStats, base, before) {
   }
   if (best) return best;
   const fallback = base || HDD_BASE;
-  return { model: null, rows: dailyRows(gasStats, tempStats, fallback), baseT: fallback };
+  return { model: null, rows: weigh(dailyRows(gasStats, tempStats, fallback)), baseT: fallback };
+}
+
+/** Tagesmittel zweier Temperatur-Statistiken zusammenführen: `primary` wo vorhanden, sonst `fallback`. */
+export function mergeTemps(primary, fallback) {
+  const out = {};
+  (fallback || []).forEach((r) => {
+    if (r.mean != null && isFinite(r.mean)) out[dayKey(startMs(r))] = r;
+  });
+  (primary || []).forEach((r) => {
+    if (r.mean != null && isFinite(r.mean)) out[dayKey(startMs(r))] = r;
+  });
+  return Object.keys(out)
+    .map((k) => out[k])
+    .sort((a, b) => startMs(a) - startMs(b));
+}
+
+/**
+ * Tagesprognose aus Modell und bisherigem Verlauf mischen.
+ * done: Anteil des typischen Tagesverbrauchs, der bis jetzt üblicherweise schon angefallen ist (0…1).
+ * Hochrechnung = bisher / done; Gewicht der Hochrechnung wächst mit done.
+ */
+export function blendToday(modelExp, actual, done) {
+  if (actual == null || !isFinite(actual)) return modelExp;
+  const p = Math.max(0, Math.min(1, done || 0));
+  if (modelExp == null) return p > 0.15 ? actual / p : null;
+  if (p < 0.05) return Math.max(modelExp, actual);
+  const runRate = actual / p;
+  return Math.max(actual, (1 - p) * modelExp + p * runRate);
 }
 
 export function expected(model, hddValue) {
@@ -120,9 +167,10 @@ export function forecastSum(model, forecast, days, base) {
 }
 
 /** Monatssumme (ab dem 1.) und erwartete Monatssumme für die Tage mit Temperatur. */
-export function monthTotals(rows, model, now) {
+export function monthTotals(rows, model, now, since) {
   const d = new Date(now);
-  const first = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+  // Abweichung nur über Tage, für die das Modell gilt (ab Stichtag).
+  const first = Math.max(new Date(d.getFullYear(), d.getMonth(), 1).getTime(), since || 0);
   const inMonth = rows.filter((r) => r.start >= first);
   const actual = inMonth.reduce((a, r) => a + r.gas, 0);
   const withT = inMonth.filter((r) => r.hdd != null);
