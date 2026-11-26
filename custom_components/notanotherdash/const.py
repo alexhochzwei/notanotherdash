@@ -6,4 +6,5 @@ PANEL_URL = "notanotherdash"
 STATIC_URL = "/notanotherdash_static"
 STORAGE_KEY = "notanotherdash.settings"
 STORAGE_VERSION = 1
+SCHEDULE_STORAGE_KEY = "notanotherdash.schedule"
 SIGNAL_SETTINGS_UPDATED = "notanotherdash_settings_updated"

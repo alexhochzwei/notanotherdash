@@ -25,6 +25,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.helpers.typing import ConfigType
 
 from .config_flow import OPT_ADMIN_ONLY
+from .schedule import VacuumScheduler
 from .const import (
     DOMAIN,
     PANEL_URL,
@@ -56,6 +57,7 @@ class SettingsStore:
         self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, STORAGE_KEY)
         self.data: dict[str, Any] = {}
         self.revision = 0
+        self.scheduler: VacuumScheduler | None = None
 
     async def async_load(self) -> None:
         self.data = await self._store.async_load() or {}
@@ -64,6 +66,8 @@ class SettingsStore:
         self.data = data
         self.revision += 1
         await self._store.async_save(data)
+        if self.scheduler:
+            self.scheduler.settings_changed()
         async_dispatcher_send(self.hass, SIGNAL_SETTINGS_UPDATED, self.revision)
 
 
@@ -72,6 +76,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     websocket_api.async_register_command(hass, ws_settings_get)
     websocket_api.async_register_command(hass, ws_settings_save)
     websocket_api.async_register_command(hass, ws_settings_subscribe)
+    websocket_api.async_register_command(hass, ws_schedule_state)
     return True
 
 
@@ -80,6 +85,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     store = SettingsStore(hass)
     await store.async_load()
     hass.data[DOMAIN] = store
+    store.scheduler = VacuumScheduler(hass, store)
+    await store.scheduler.async_start()
+    entry.async_on_unload(store.scheduler.async_stop)
 
     if not hass.data.get(f"{DOMAIN}_static"):
         hass.http.register_view(FrontendView())
@@ -183,3 +191,14 @@ def ws_settings_subscribe(hass: HomeAssistant, connection: websocket_api.ActiveC
 
     connection.subscriptions[msg["id"]] = async_dispatcher_connect(hass, SIGNAL_SETTINGS_UPDATED, forward)
     connection.send_result(msg["id"])
+
+
+@websocket_api.websocket_command({vol.Required("type"): "notanotherdash/schedule/state"})
+@callback
+def ws_schedule_state(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
+    """Status des Reinigungsplans: heute erledigte und wartende Einträge."""
+    store = _store(hass)
+    if store is None or store.scheduler is None:
+        connection.send_error(msg["id"], "not_loaded", "Not Another Dash ist nicht eingerichtet")
+        return
+    connection.send_result(msg["id"], store.scheduler.state())

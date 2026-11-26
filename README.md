@@ -10,9 +10,9 @@ Aufbau und Ideen angelehnt an [HausPanel](https://github.com/alpacalabs-de/hausp
 - **Raumansicht** (Raumkachel antippen): Szenen, Heizung mit Drehrad (Ziehen nach rechts = wärmer, gesendet beim Loslassen), Presets, einzelne Heizkörper, 24-h-Temperaturverlauf; Lichter (Tippen schaltet, seitlich Wischen dimmt); Rollläden hochkant (Ziehen stellt die Position ein, Gruppe antippen zeigt die einzelnen).
 
 - **Energie:** Gas pro Tag mit erwartetem Verbrauch aus der Außentemperatur (Heizgradtage, Ausgleichsgerade über die letzten 30 Tage), Monatssumme mit Abweichung, Prognose für 7 Tage aus der Wettervorhersage, Strom heute je Stunde und aktuelle Leistung. Daten aus den Langzeitstatistiken des Recorders.
-- **Sauger:** Status, Start/Pause/Station, Raumauswahl, Saugkraft, Wisch-Einstellungen (Select-Entitäten des Geräts) und Restlaufzeiten der Verschleißteile.
+- **Sauger:** Status, Start/Pause/Station, Raumauswahl auf der Karte (passt sich der Bildschirmhöhe an), Saugkraft, Wisch-Einstellungen (Select-Entitäten des Geräts), Wartung (Restlaufzeiten der Verschleißteile, Schlüssel-Symbol, oranger Punkt wenn fällig) und Zeitplan.
 
-- **Klima:** alle Räume mit Ist- und Solltemperatur, Status und Presets für alle Räume auf einmal.
+- **Klima:** alle Räume mit Ist- und Solltemperatur, Status und Presets für alle Räume auf einmal; oben Anwesenheit mit Rückkehrtermin (siehe unten).
 - **Licht:** alle Lichter nach Räumen (Tippen schaltet, Wischen dimmt), „Alle aus“.
 - **Kameras:** Standbilder (alle 10 s), Antippen für das Live-Bild.
 - **Zweite Ebene in der Raumansicht:** Pfeil in der Heizungskarte (jedes Thermostat einzeln, Betriebsart, Presets) und langes Drücken auf ein Licht (Helligkeit, Farbtemperatur, Farbe).
@@ -27,6 +27,16 @@ Einstellungen → „Energie & Sauger“: Gaszähler und Stromzähler (Zählerst
 Für die interaktive Karte die Integration [Roborock Custom Map](https://github.com/Python-roborock/RoborockCustomMap) installieren (HACS, benutzerdefiniertes Repository). Sie liefert eine Bild-Entität (`image.…_custom`) mit Kalibrierungspunkten und Raumumrissen; das Dashboard findet sie automatisch und legt die Raumnamen auf die Karte. Antippen wählt Räume aus.
 
 Einstellungen → „Energie & Sauger“: Saugroboter wählen, „Räume laden“ (aus der Karte und `roborock.get_maps`) und jedem Bereich seinen Roborock-Raum zuordnen; daraus kommen die Namen auf der Karte. Gereinigt wird mit `vacuum.send_command` / `app_segment_clean`.
+
+### Anwesenheit und Abwesenheit
+
+Einstellungen → „Anwesenheit“: eine Anwesenheits-Entität (`input_boolean`, `binary_sensor`, `switch`, `person`, `device_tracker`, `zone` oder `group`) und optional einen Rückkehrtermin (`input_datetime` mit Datum und Uhrzeit). Zuhause gilt bei `on`/`home` oder mehr als 0 Personen in der Zone.
+
+Das Dashboard **zeigt und schaltet nur** diese Entitäten (Klima-Panel oben: Schalter, Rückkehrtermin, Schnellwahl). Was bei Abwesenheit passiert, etwa Heizung absenken und vor der Rückkehr vorheizen, gehört in deine eigenen Automationen in Home Assistant. So passt das Dashboard zu jeder Heizungslogik.
+
+### Reinigungsplan
+
+Im Sauger-Panel unter „Zeitplan“: beliebig viele Einträge mit Wochentagen, Uhrzeit und Räumen (keiner gewählt = alle). Der Plan läuft **in der Integration**, also auch ohne offenes Dashboard. Ist eine Anwesenheits-Entität eingestellt, wartet ein fälliger Eintrag, bis niemand zuhause ist, längstens bis Mitternacht. Ohne Anwesenheits-Entität startet die Reinigung zur Uhrzeit. Pro Minute startet höchstens eine Reinigung; weitere fällige Einträge warten, bis der Sauger wieder frei ist. Einträge, die nach ihrer Uhrzeit angelegt oder geändert werden, laufen erst am nächsten passenden Tag.
 
 ## Installation
 

@@ -2,7 +2,7 @@
 // Sie zeigen alle Geräte eines Typs nach Räumen; ein Tipp auf den Raumnamen öffnet die Raumansicht.
 
 import { icon } from "./icons.js";
-import { fmtNum, lightInfo, climateModes, climateRange, snap, shortName, roomSummary } from "./model.js";
+import { fmtNum, lightInfo, climateModes, climateRange, snap, shortName, roomSummary, presenceOf, returnTime, fmtWhen, domainOf } from "./model.js";
 
 const DRAG_START_PX = 8;
 
@@ -65,7 +65,103 @@ export class ClimateView extends BaseView {
   }
 
   watched() {
-    return roomsWith(this.host.model(), "climates").reduce((a, r) => a.concat(r.climates, r.windows, r.tempSensor ? [r.tempSensor] : []), []);
+    const st = this.host.settings();
+    const extra = [st.presence_entity, st.return_entity].filter(Boolean);
+    return roomsWith(this.host.model(), "climates").reduce((a, r) => a.concat(r.climates, r.windows, r.tempSensor ? [r.tempSensor] : []), extra);
+  }
+
+  hide() {
+    this.away = false;
+    this.drag = null;
+  }
+
+  // ---------- Abwesenheit ----------
+  // Das Dashboard schaltet nur die eingestellten Entitäten (Anwesenheit, Rückkehrtermin).
+  // Was daraus folgt (Absenken, Vorheizen), regeln die Automationen in Home Assistant.
+
+  awayChip() {
+    const st = this.host.settings();
+    if (!st.presence_entity) return "";
+    const states = this.hass.states;
+    const home = presenceOf(states[st.presence_entity]);
+    const back = returnTime(st.return_entity ? states[st.return_entity] : null);
+    const txt =
+      home === null ? "Anwesenheit unbekannt" : home ? "Zuhause" : "Abwesend" + (back && back.getTime() > Date.now() ? " · zurück " + fmtWhen(back) : "");
+    return '<button class="scene awaychip' + (home === false ? " away" : "") + '" data-away="1">' + icon(home === false ? "away" : "home") + esc(txt) + "</button>";
+  }
+
+  awaySheet() {
+    const st = this.host.settings();
+    const states = this.hass.states;
+    const pso = states[st.presence_entity];
+    const home = presenceOf(pso);
+    const canToggle = ["input_boolean", "switch"].indexOf(domainOf(st.presence_entity)) >= 0;
+    const rso = st.return_entity ? states[st.return_entity] : null;
+    const back = returnTime(rso);
+    const pad = (n) => ("0" + n).slice(-2);
+    const val = back ? back.getFullYear() + "-" + pad(back.getMonth() + 1) + "-" + pad(back.getDate()) + "T" + pad(back.getHours()) + ":" + pad(back.getMinutes()) : "";
+    const body =
+      '<div class="group">' +
+      '<div class="row"><div><div class="t">Zuhause</div><div class="d">' + esc((pso && pso.attributes.friendly_name) || st.presence_entity) + "</div></div>" +
+      (canToggle
+        ? '<button class="sw' + (home ? " on" : "") + '" role="switch" aria-checked="' + !!home + '" aria-label="Zuhause" data-awaytoggle="1"></button>'
+        : '<span class="cap" style="margin-left:auto">' + (home === null ? "unbekannt" : home ? "ja" : "nein") + "</span>") +
+      "</div>" +
+      (rso
+        ? '<div class="row"><div><div class="t">Rückkehr</div><div class="d">Damit rechtzeitig vorgeheizt werden kann</div></div>' +
+          '<input type="datetime-local" class="dinput" data-return="1" value="' + esc(val) + '"></div>' +
+          '<div class="row"><div class="d">Schnellwahl</div><div class="vopts" style="margin-left:auto">' +
+          [["Heute 18:00", 0, 18], ["Morgen 18:00", 1, 18], ["Morgen 22:00", 1, 22], ["+2 Tage 18:00", 2, 18]]
+            .map((q) => '<button class="opt" style="flex:none;white-space:nowrap" data-quick="' + q[1] + "," + q[2] + '">' + q[0] + "</button>")
+            .join("") +
+          "</div></div>"
+        : "") +
+      "</div>" +
+      '<div class="note">Das Dashboard schaltet nur diese Entitäten. Absenken und Vorheizen erledigen deine Automationen in Home Assistant.</div>';
+    return (
+      '<div class="edetail"><div class="sheet edsheet awaysheet">' +
+      '<div class="chead"><div class="ptitle">Abwesenheit</div><button class="round" data-closeaway="1" aria-label="Schließen">' + icon("close") + "</button></div>" +
+      '<div class="edbody">' + body + "</div></div></div>"
+    );
+  }
+
+  setReturn(d) {
+    const st = this.host.settings();
+    const pad = (n) => ("0" + n).slice(-2);
+    const v = d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + " " + pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":00";
+    this.call("input_datetime", "set_datetime", { entity_id: st.return_entity, datetime: v });
+    this.host.toast("Rückkehr: " + fmtWhen(d));
+  }
+
+  bindAway() {
+    const el = this.host.el;
+    const st = this.host.settings();
+    const q = (s) => Array.prototype.slice.call(el.querySelectorAll(s));
+    q("[data-away]").forEach((b) => (b.onclick = () => { this.away = true; this.render(); }));
+    if (!this.away) return;
+    const close = () => { this.away = false; this.drag = null; this.render(); };
+    q("[data-closeaway]").forEach((b) => (b.onclick = close));
+    const ov = el.querySelector(".edetail");
+    if (ov) ov.addEventListener("click", (e) => { if (e.target === ov) close(); });
+    q("[data-awaytoggle]").forEach((b) => (b.onclick = () => {
+      const on = b.classList.contains("on");
+      this.call(domainOf(st.presence_entity), on ? "turn_off" : "turn_on", { entity_id: st.presence_entity });
+      this.host.toast(on ? "Abwesend" : "Zuhause");
+    }));
+    q("[data-return]").forEach((i) => {
+      // Während der Eingabe nicht neu zeichnen, sonst schließt sich die Datumsauswahl.
+      i.addEventListener("focus", () => { this.drag = { input: true }; });
+      i.addEventListener("blur", () => { this.drag = null; if (this.dirty) { this.dirty = false; this.render(); } });
+      i.addEventListener("change", () => {
+        const d = new Date(i.value);
+        if (i.value && isFinite(d.getTime())) this.setReturn(d);
+      });
+    });
+    q("[data-quick]").forEach((b) => (b.onclick = () => {
+      const p = b.getAttribute("data-quick").split(",");
+      const n = new Date();
+      this.setReturn(new Date(n.getFullYear(), n.getMonth(), n.getDate() + parseInt(p[0], 10), parseInt(p[1], 10), 0));
+    }));
   }
 
   render() {
@@ -126,14 +222,17 @@ export class ClimateView extends BaseView {
 
     el.innerHTML =
       '<div class="phead"><div><div class="ptitle">Klima</div><div class="cap">' + heating + " von " + rooms.length + " Räumen heizen</div></div>" +
+      this.awayChip() +
       (presets.length
         ? '<div class="pacts"><span class="cap">Alle:</span>' + presets.map((m) => '<button class="scene" data-allpreset="' + esc(m.value) + '">' + esc(m.label) + "</button>").join("") + "</div>"
         : "") +
       "</div>" +
-      '<div class="cgrid">' + cards + "</div>";
+      '<div class="cgrid">' + cards + "</div>" +
+      (this.away && this.host.settings().presence_entity ? this.awaySheet() : "");
 
     const q = (s) => Array.prototype.slice.call(el.querySelectorAll(s));
     this.bindRoomLinks();
+    this.bindAway();
     q("[data-cstep]").forEach((b) => (b.onclick = () => {
       const r = rooms.filter((x) => x.id === b.getAttribute("data-room"))[0];
       const main = states[r.climates[0]];

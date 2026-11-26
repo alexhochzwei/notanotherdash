@@ -449,6 +449,7 @@ class NotAnotherDashPanel extends HTMLElement {
         settings: () => this._settings,
         reg: () => this._reg || {},
         areas: () => ((this._reg && this._reg.areas) || []).slice().sort((a, b) => a.name.localeCompare(b.name, "de")),
+        saveSettings: (patch) => this._savePatch(patch),
         toast: (text) => this._toast(text)
       })
     };
@@ -692,6 +693,13 @@ class NotAnotherDashPanel extends HTMLElement {
     }
   }
 
+  /** Einzelne Einstellungen aus einer Ansicht heraus speichern (z. B. Reinigungsplan). */
+  async _savePatch(patch) {
+    const next = Object.assign({}, this._settings, patch);
+    await this._hass.callWS({ type: "notanotherdash/settings/save", settings: next });
+    this._settings = next;
+  }
+
   _entityOptions(filter, current) {
     const states = this._hass.states;
     const ids = Object.keys(states).filter((id) => filter(id, states[id])).sort();
@@ -712,6 +720,7 @@ class NotAnotherDashPanel extends HTMLElement {
       ["side", "Kopfzeile & Leiste"],
       ["rooms", "Räume"],
       ["energy", "Energie & Sauger"],
+      ["presence", "Anwesenheit"],
       ["look", "Darstellung"]
     ];
     let page = "";
@@ -776,6 +785,14 @@ class NotAnotherDashPanel extends HTMLElement {
           : Object.keys(map).length
           ? '<div class="row"><div class="d">' + Object.keys(map).length + " Bereiche zugeordnet</div></div>"
           : "") +
+        "</div>";
+    } else if (this._tab === "presence") {
+      const PRES = ["input_boolean", "binary_sensor", "switch", "person", "device_tracker", "zone", "group"];
+      page =
+        '<div class="note">Das Dashboard zeigt und schaltet nur diese Entitäten. Was bei Abwesenheit passiert (Heizung absenken, vorheizen), regeln deine eigenen Automationen in Home Assistant.</div>' +
+        '<div class="group">' +
+        this._entRow("presence_entity", "Anwesenheit", "Zuhause = an / home / Personen in der Zone > 0. Schaltbar im Klima-Panel, wenn es ein Schalter (input_boolean) ist. Auch der Zeitplan des Saugers richtet sich danach.", (id) => PRES.indexOf(domainOf(id)) >= 0) +
+        this._entRow("return_entity", "Rückkehrtermin", "input_datetime mit Datum und Uhrzeit, z. B. zum rechtzeitigen Vorheizen", (id, s) => domainOf(id) === "input_datetime" && s.attributes.has_date && s.attributes.has_time) +
         "</div>";
     } else {
       const lite = local("lite") || "auto";

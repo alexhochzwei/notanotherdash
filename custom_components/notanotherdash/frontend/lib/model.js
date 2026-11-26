@@ -495,3 +495,42 @@ export function hasDepartures(so) {
   const a = (so && so.attributes) || {};
   return Array.isArray(a.times) || Array.isArray(a.departures) || Array.isArray(a.next_departures) || Array.isArray(a.journeys);
 }
+
+/**
+ * Anwesenheit aus einer beliebigen Entität: true = jemand zuhause, false = niemand, null = unbekannt.
+ * input_boolean/binary_sensor/switch (an = zuhause), person/device_tracker (home), zone (Anzahl > 0).
+ * Gleiche Regeln wie im Reinigungsplan der Integration (schedule.py).
+ */
+export function presenceOf(so) {
+  if (!so || so.state === "unknown" || so.state === "unavailable" || so.state === "") return null;
+  const s = String(so.state).toLowerCase();
+  if (s === "on" || s === "home" || s === "true") return true;
+  if (s === "off" || s === "not_home" || s === "away" || s === "false") return false;
+  const n = parseFloat(s);
+  return isFinite(n) ? n > 0 : false;
+}
+
+const WD = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+
+/** Rückkehrtermin aus input_datetime als Date (lokal), sonst null. */
+export function returnTime(so) {
+  if (!so || !so.attributes || !so.attributes.has_date) return null;
+  const a = so.attributes;
+  if (a.year == null) return null;
+  const d = new Date(a.year, a.month - 1, a.day, a.hour || 0, a.minute || 0);
+  return isFinite(d.getTime()) ? d : null;
+}
+
+/** „Fr 22:00“, bei heute „heute 22:00“, morgen „morgen 22:00“. */
+export function fmtWhen(d, now) {
+  if (!d) return "";
+  const n = now instanceof Date ? now : new Date(now || Date.now());
+  const day0 = new Date(n.getFullYear(), n.getMonth(), n.getDate()).getTime();
+  const dd = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const diff = Math.round((dd - day0) / 86400000);
+  const hm = ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2);
+  if (diff === 0) return "heute " + hm;
+  if (diff === 1) return "morgen " + hm;
+  if (diff > 1 && diff < 7) return WD[d.getDay()] + " " + hm;
+  return d.getDate() + "." + (d.getMonth() + 1) + ". " + hm;
+}

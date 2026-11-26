@@ -35,7 +35,9 @@ const P = {
   stopsq: '<rect x="7" y="7" width="10" height="10" rx="1.5"/>',
   check: '<path d="M5 12l5 5 9-10"/>',
   play: '<path d="M8 5l11 7-11 7z"/>',
-  pause: '<path d="M9 5v14M15 5v14"/>'
+  pause: '<path d="M9 5v14M15 5v14"/>',
+  wrench: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z"/>',
+  away: '<path d="M4 11l8-7 8 7M6 9.5V20h5"/><path d="M15 14h6M18 11l3 3-3 3"/>'
 };
 
 export function icon(name, cls) {

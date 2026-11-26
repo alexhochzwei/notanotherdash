@@ -5,7 +5,7 @@
 // und Dauer-Sensoren (Restlaufzeit von Filter, Bürsten usw.).
 
 import { icon } from "./icons.js";
-import { fmtNum, shortName } from "./model.js";
+import { fmtNum, shortName, presenceOf } from "./model.js";
 
 const STATES = {
   docked: "Angedockt",
@@ -23,6 +23,36 @@ const OPTION = {
   off: "Aus", low: "Wenig", mild: "Wenig", medium: "Mittel", moderate: "Mittel", high: "Viel", intense: "Viel", extreme: "Maximal",
   standard: "Standard", deep: "Gründlich", deep_plus: "Gründlich+", fast: "Schnell", custom: "Eigene", custom_water_flow: "Eigene", smart_mode: "Smart"
 };
+
+// Verschleißteile der Roborock-Integration (Übersetzungsschlüssel → Name).
+const PARTS = {
+  filter_time_left: "Filter",
+  main_brush_time_left: "Hauptbürste",
+  side_brush_time_left: "Seitenbürste",
+  sensor_time_left: "Sensoren",
+  dock_strainer_time_left: "Sieb der Station",
+  dock_cleaning_brush_time_left: "Reinigungsbürste der Station"
+};
+
+const DAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]; // Index wie Python weekday(): 0 = Montag
+
+function pad(n) {
+  return ("0" + n).slice(-2);
+}
+
+/** Lokale Zeit als „YYYY-MM-DDTHH:MM“ (Vergleich im Planer der Integration). */
+function stamp(d) {
+  return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + "T" + pad(d.getHours()) + ":" + pad(d.getMinutes());
+}
+
+/** „Mo Mi Fr“, „täglich“, „Mo–Fr“, „Sa So“. */
+export function daysText(days) {
+  const d = (days || []).slice().sort();
+  if (d.length === 7) return "täglich";
+  if (d.join() === "0,1,2,3,4") return "Mo–Fr";
+  if (!d.length) return "nie";
+  return d.map((i) => DAYS[i]).join(" ");
+}
 
 function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -105,6 +135,10 @@ export class VacuumView {
     this.selected = {};
     this.imgSize = null;
     this.imgUrl = null;
+    this.sheet = null; // "maint" | "plan"
+    this.plan = null; // Entwurf des Reinigungsplans
+    this.planState = null;
+    this.editing = false;
   }
 
   get hass() {
@@ -113,16 +147,35 @@ export class VacuumView {
 
   show() {
     this.render();
+    this.loadPlanState();
+    clearInterval(this.planTimer);
+    this.planTimer = setInterval(() => this.loadPlanState(), 60000);
   }
 
-  hide() {}
+  hide() {
+    clearInterval(this.planTimer);
+    this.sheet = null;
+    this.plan = null;
+    this.editing = false;
+    if (this.ro) this.ro.disconnect();
+  }
+
+  async loadPlanState() {
+    try {
+      this.planState = await this.hass.callWS({ type: "notanotherdash/schedule/state" });
+    } catch (e) {
+      this.planState = null;
+    }
+    if (!this.sheet) this.render();
+  }
 
   /** Nur neu zeichnen, wenn sich Entitäten des Saugers geändert haben. */
   watched() {
     const id = this.host.settings().vacuum_entity;
     if (!id) return [];
     const m = this.mapEntity();
-    return [id].concat(this.siblings(id).map((e) => e.entity_id)).concat(m ? [m] : []);
+    const p = this.host.settings().presence_entity;
+    return [id].concat(this.siblings(id).map((e) => e.entity_id)).concat(m ? [m] : [], p ? [p] : []);
   }
 
   /** Karten-Entität: aus den Einstellungen, sonst die erste Bild-Entität mit Kalibrierung (RoborockCustomMap). */
@@ -146,6 +199,8 @@ export class VacuumView {
   }
 
   render() {
+    // Während im Zeitplan eine Uhrzeit eingegeben wird, nicht neu zeichnen.
+    if (this.editing) return;
     const st = this.host.settings();
     const el = this.host.el;
     const id = st.vacuum_entity;
@@ -202,17 +257,12 @@ export class VacuumView {
       )
       .join("");
 
-    const maint = sib
-      // Restlaufzeiten erkennt die Roborock-Integration am Übersetzungsschlüssel (…_time_left).
-      .filter((s) => s.id.indexOf("sensor.") === 0 && /_time_left$/.test(s.key))
-      .map((s) => {
-        const h = hoursLeft(s);
-        return (
-          '<div class="mrow"><span>' + esc(shortName(s.attributes.friendly_name || s.id, a.friendly_name || "")) + '</span><span class="' + (h != null && h < 10 ? "low" : "") + '">' +
-          (h == null ? "–" : h >= 48 ? fmtNum(h / 24, 0) + " Tage" : fmtNum(h, 0) + " Std.") + "</span></div>"
-        );
-      })
-      .join("");
+    // Restlaufzeiten erkennt die Roborock-Integration am Übersetzungsschlüssel (…_time_left).
+    const parts = sib.filter((s) => s.id.indexOf("sensor.") === 0 && /_time_left$/.test(s.key));
+    const due = parts.filter((s) => {
+      const h = hoursLeft(s);
+      return h != null && h < 10;
+    }).length;
 
     const startTxt = paused ? "Fortsetzen" : cleaning ? "Läuft …" : sel.length ? "Auswahl reinigen" : "Alles reinigen";
     el.innerHTML =
@@ -225,18 +275,227 @@ export class VacuumView {
       (battery != null ? '<div class="vbar"><i style="width:' + Math.max(0, Math.min(100, battery)) + '%"></i></div>' : "") +
       '<div class="vacts"><button class="vact pri" data-start="1"' + (cleaning ? " disabled" : "") + ">" + icon("play") + esc(startTxt) + "</button>" +
       '<button class="vact" data-pause="1" aria-label="Pause">' + icon("pause") + "</button>" +
-      '<button class="vact" data-home="1" aria-label="Zur Station">' + icon("home") + "</button></div></section>" +
+      '<button class="vact" data-home="1" aria-label="Zur Station">' + icon("home") + "</button>" +
+      (parts.length ? '<button class="vact" data-sheet="maint" aria-label="Wartung">' + icon("wrench") + (due ? '<i class="vdot"></i>' : "") + "</button>" : "") +
+      "</div></section>" +
       (fans || selects
         ? '<section class="card vset">' + (fans ? '<div class="vseg"><div class="vsl">Saugkraft</div><div class="vopts">' + fans + "</div></div>" : "") + selects + "</section>"
         : "") +
-      (maint ? '<section class="card vmaint">' + maint + "</section>" : "") +
-      "</div></div>";
+      this.planCard(segs) +
+      "</div></div>" +
+      (this.sheet === "maint" ? this.maintSheet(parts, a.friendly_name || "") : "") +
+      (this.sheet === "plan" ? this.planSheet(segs) : "");
     this.bind(id, segs, paused);
+    this.fitMap();
+  }
+
+  // ---------- Wartung ----------
+
+  maintSheet(parts, robotName) {
+    const rows = parts
+      .map((s) => {
+        const h = hoursLeft(s);
+        const txt = h == null ? "–" : h <= 0 ? "jetzt tauschen" : h >= 48 ? fmtNum(h / 24, 0) + " Tage" : fmtNum(h, 0) + " Std.";
+        return (
+          '<div class="row"><div class="t">' + esc(PARTS[s.key] || shortName(s.attributes.friendly_name || s.id, robotName)) + '</div><span class="mval' + (h != null && h < 10 ? " low" : "") + '">' + txt + "</span></div>"
+        );
+      })
+      .join("");
+    return this.sheetShell("Wartung", '<div class="group">' + rows + '</div><div class="note">Restlaufzeit der Verschleißteile. Nach dem Tausch in der Roborock-App zurücksetzen.</div>');
+  }
+
+  sheetShell(title, body, foot) {
+    return (
+      '<div class="edetail"><div class="sheet edsheet">' +
+      '<div class="chead"><div class="ptitle">' + esc(title) + '</div>' + (foot || "") + '<button class="round"' + (foot ? ' style="margin-left:12px"' : "") + ' data-closesheet="1" aria-label="Schließen">' + icon("close") + "</button></div>" +
+      '<div class="edbody">' + body + "</div></div></div>"
+    );
+  }
+
+  // ---------- Reinigungsplan ----------
+  // Ausgeführt wird der Plan von der Integration (schedule.py), nicht vom Dashboard.
+
+  planCard(segs) {
+    const st = this.host.settings();
+    const plan = st.vacuum_schedule || [];
+    const ps = this.planState || {};
+    const runs = ps.runs || {};
+    const waiting = ps.waiting || [];
+    const home = st.presence_entity ? presenceOf(this.hass.states[st.presence_entity]) : null;
+    const names = {};
+    segs.forEach((g) => (names[g.id] = g.name));
+    const rows = plan
+      .map((e) => {
+        const run = runs[e.id];
+        const stat =
+          e.enabled === false ? "aus" :
+          run && run.status === "done" ? "heute " + esc(String(run.at || "").slice(11, 16)) + " ✓" :
+          waiting.indexOf(e.id) >= 0 ? '<span class="low">' + (home !== false && st.presence_entity ? "wartet bis du weg bist" : "startet gleich") + "</span>" : "";
+        const rooms = (e.segments || []).length ? e.segments.map((id) => names[id] || id).join(", ") : "alle Räume";
+        return (
+          '<div class="prow' + (e.enabled === false ? " off" : "") + '"><b>' + esc(e.time || "–") + "</b><div><div>" + esc(daysText(e.days)) + " · " + esc(rooms) + "</div>" +
+          (stat ? '<div class="cap">' + stat + "</div>" : "") + "</div></div>"
+        );
+      })
+      .join("");
+    return (
+      '<section class="card vplan"><div class="chead"><div class="ctitle">Zeitplan</div><button class="scene sm" style="margin-left:auto" data-sheet="plan">' + (plan.length ? "Bearbeiten" : "Anlegen") + "</button></div>" +
+      (rows || '<div class="cap">Kein Zeitplan</div>') +
+      (plan.length && st.presence_entity ? '<div class="cap">Bei Anwesenheit wird bis zur nächsten Abwesenheit gewartet, längstens bis Mitternacht.</div>' : "") +
+      "</section>"
+    );
+  }
+
+  planSheet(segs) {
+    const st = this.host.settings();
+    const plan = this.plan || [];
+    const blocks = plan
+      .map((e, i) => {
+        const on = e.enabled !== false;
+        const sel = e.segments || [];
+        return (
+          '<div class="group pentry">' +
+          '<div class="row"><button class="sw' + (on ? " on" : "") + '" style="margin-left:0" role="switch" aria-checked="' + on + '" aria-label="Eintrag aktiv" data-pen="' + i + '"></button>' +
+          '<input type="time" class="dinput" style="margin-left:0" data-ptime="' + i + '" value="' + esc(e.time || "10:00") + '">' +
+          '<button class="round" style="margin-left:auto" data-pdel="' + i + '" aria-label="Eintrag löschen">' + icon("bin") + "</button></div>" +
+          '<div class="row"><div class="vopts">' +
+          DAYS.map((d, k) => '<button class="opt' + ((e.days || []).indexOf(k) >= 0 ? " on" : "") + '" data-pday="' + i + "," + k + '">' + d + "</button>").join("") +
+          "</div></div>" +
+          (segs.length
+            ? '<div class="row"><div class="vopts">' +
+              '<button class="opt' + (!sel.length ? " on" : "") + '" data-pall="' + i + '">Alle Räume</button>' +
+              segs.map((g) => '<button class="opt' + (sel.indexOf(String(g.id)) >= 0 ? " on" : "") + '" data-pseg="' + i + "," + esc(g.id) + '">' + esc(g.name) + "</button>").join("") +
+              "</div></div>"
+            : "") +
+          "</div>"
+        );
+      })
+      .join("");
+    const note = st.presence_entity
+      ? "Ist jemand zuhause, wartet der Eintrag bis zur nächsten Abwesenheit, längstens bis Mitternacht. Anwesenheit: " + esc((this.hass.states[st.presence_entity] || { attributes: {} }).attributes.friendly_name || st.presence_entity) + "."
+      : "Ohne Anwesenheits-Entität (Einstellungen → Anwesenheit) startet die Reinigung immer zur Uhrzeit.";
+    return this.sheetShell(
+      "Zeitplan",
+      blocks + '<button class="scene" data-padd="1">+ Eintrag</button><div class="note">' + note + " Läuft in Home Assistant, auch wenn das Dashboard zu ist.</div>",
+      '<button class="scene pri" style="margin-left:auto" data-psave="1">Speichern</button>'
+    );
+  }
+
+  bindPlan() {
+    const el = this.host.el;
+    const q = (s) => Array.prototype.slice.call(el.querySelectorAll(s));
+    const plan = this.plan;
+    const at = (attr, b) => b.getAttribute(attr).split(",");
+    const redraw = () => this.render();
+    q("[data-pen]").forEach((b) => (b.onclick = () => {
+      const e = plan[+b.getAttribute("data-pen")];
+      e.enabled = e.enabled === false;
+      redraw();
+    }));
+    q("[data-pdel]").forEach((b) => (b.onclick = () => {
+      plan.splice(+b.getAttribute("data-pdel"), 1);
+      redraw();
+    }));
+    q("[data-pday]").forEach((b) => (b.onclick = () => {
+      const p = at("data-pday", b);
+      const e = plan[+p[0]];
+      const k = +p[1];
+      const days = (e.days = e.days || []);
+      const j = days.indexOf(k);
+      if (j >= 0) days.splice(j, 1);
+      else days.push(k);
+      days.sort();
+      redraw();
+    }));
+    q("[data-pall]").forEach((b) => (b.onclick = () => {
+      plan[+b.getAttribute("data-pall")].segments = [];
+      redraw();
+    }));
+    q("[data-pseg]").forEach((b) => (b.onclick = () => {
+      const p = at("data-pseg", b);
+      const e = plan[+p[0]];
+      const segs = (e.segments = e.segments || []);
+      const j = segs.indexOf(p[1]);
+      if (j >= 0) segs.splice(j, 1);
+      else segs.push(p[1]);
+      redraw();
+    }));
+    q("[data-ptime]").forEach((i) => {
+      i.addEventListener("focus", () => (this.editing = true));
+      i.addEventListener("change", () => (plan[+i.getAttribute("data-ptime")].time = i.value || "10:00"));
+      i.addEventListener("blur", () => {
+        this.editing = false;
+        redraw();
+      });
+    });
+    q("[data-padd]").forEach((b) => (b.onclick = () => {
+      plan.push({ id: "p" + Date.now().toString(36), enabled: true, days: [0, 2, 4], time: "10:00", segments: [] });
+      redraw();
+    }));
+    q("[data-psave]").forEach((b) => (b.onclick = async () => {
+      const old = {};
+      (this.host.settings().vacuum_schedule || []).forEach((e) => (old[e.id] = e));
+      const now = stamp(new Date());
+      const next = plan.map((e) => {
+        const o = old[e.id];
+        const same = o && JSON.stringify(Object.assign({}, o, { since: null })) === JSON.stringify(Object.assign({}, e, { since: null }));
+        // Neue oder geänderte Einträge: heute nicht rückwirkend nachholen (siehe schedule.py).
+        return Object.assign({}, e, { since: same ? o.since || null : now });
+      });
+      try {
+        await this.host.saveSettings({ vacuum_schedule: next });
+        this.host.toast("Zeitplan gespeichert");
+        this.sheet = null;
+        this.plan = null;
+        this.render();
+        this.loadPlanState();
+      } catch (err) {
+        this.host.toast("Speichern fehlgeschlagen");
+      }
+    }));
+  }
+
+  // ---------- Karte ----------
+
+  /** Kartenausschnitt so groß wie möglich, ohne die Ansicht scrollen zu müssen. */
+  fitMap() {
+    const el = this.host.el;
+    const wrap = el.querySelector(".vmapwrap");
+    const crop = el.querySelector(".vcrop");
+    if (!wrap || !crop) return;
+    const ratio = parseFloat(crop.getAttribute("data-ratio"));
+    const apply = () => {
+      const w = wrap.clientWidth;
+      const h = wrap.clientHeight;
+      if (!w || !h || !isFinite(ratio)) return;
+      crop.style.width = Math.floor(Math.min(w, h / ratio)) + "px";
+    };
+    apply();
+    if (window.ResizeObserver) {
+      if (this.ro) this.ro.disconnect();
+      this.ro = new ResizeObserver(apply);
+      this.ro.observe(wrap);
+    }
   }
 
   bind(id, segs, paused) {
     const el = this.host.el;
     const q = (s) => Array.prototype.slice.call(el.querySelectorAll(s));
+    q("[data-sheet]").forEach((b) => (b.onclick = () => {
+      this.sheet = b.getAttribute("data-sheet");
+      if (this.sheet === "plan") this.plan = JSON.parse(JSON.stringify(this.host.settings().vacuum_schedule || []));
+      this.render();
+    }));
+    const closeSheet = () => {
+      this.sheet = null;
+      this.plan = null;
+      this.editing = false;
+      this.render();
+    };
+    q("[data-closesheet]").forEach((b) => (b.onclick = closeSheet));
+    const ov = el.querySelector(".edetail");
+    if (ov) ov.addEventListener("click", (e) => { if (e.target === ov) closeSheet(); });
+    if (this.sheet === "plan") this.bindPlan();
     q("[data-seg]").forEach((b) => (b.onclick = () => {
       const k = b.getAttribute("data-seg");
       this.selected[k] = !this.selected[k];
@@ -307,7 +566,7 @@ export class VacuumView {
       })
       .join("");
     return (
-      '<div class="vmapwrap"><div class="vcrop" style="width:calc(min(100%, ' + (540 / ratio).toFixed(0) + 'px))"><div style="padding-top:' + (ratio * 100).toFixed(3) + '%"></div>' +
+      '<div class="vmapwrap"><div class="vcrop" data-ratio="' + ratio.toFixed(4) + '"><div style="padding-top:' + (ratio * 100).toFixed(3) + '%"></div>' +
       '<img class="vimg crop" alt="Karte" src="' + esc(url) + '" style="width:' + pct(size[0], cw) + ";left:" + pct(-cx, cw) + ";top:" + pct(-cy, ch) + '">' +
       '<div class="vov">' + overlay + "</div></div></div>"
     );
