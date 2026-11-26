@@ -15,7 +15,7 @@ Aufbau und Ideen angelehnt an [HausPanel](https://github.com/alpacalabs-de/hausp
 - **Klima:** alle Räume mit Ist- und Solltemperatur, Status und Presets für alle Räume auf einmal; oben Anwesenheit mit Rückkehrtermin (siehe unten).
 - **Licht:** alle Lichter nach Räumen (Tippen schaltet, Wischen dimmt), „Alle aus“.
 - **Kameras:** Standbilder (alle 10 s), Antippen für das Live-Bild.
-- **Zweite Ebene in der Raumansicht:** Pfeil in der Heizungskarte (jedes Thermostat einzeln, Betriebsart, Presets) und langes Drücken auf ein Licht (Helligkeit, Farbtemperatur, Farbe).
+- **Zweite Ebene in der Raumansicht:** Pfeil in der Heizungskarte (jedes Thermostat einzeln, Betriebsart, Presets, Standards = Preset-Temperaturen, sofern das Thermostat sie als `number`-Entitäten anbietet wie Versatile Thermostat) und langes Drücken auf ein Licht (Helligkeit, Farbtemperatur, Farbe).
 - **Abfahrten:** ganze Haltestelle der Integration [ha_departures](https://github.com/alex-jung/ha-departures) (alle Linien zusammengeführt, Verspätung, Ausfälle) oder einzelne Sensoren.
 
 ### Energie einrichten
@@ -31,6 +31,8 @@ Einstellungen → „Energie & Sauger“: Saugroboter wählen, „Räume laden�
 ### Anwesenheit und Abwesenheit
 
 Einstellungen → „Anwesenheit“: eine Anwesenheits-Entität (`input_boolean`, `binary_sensor`, `switch`, `person`, `device_tracker`, `zone` oder `group`) und optional einen Rückkehrtermin (`input_datetime` mit Datum und Uhrzeit). Zuhause gilt bei `on`/`home` oder mehr als 0 Personen in der Zone.
+
+Optional ein Gäste-Schalter (`input_boolean`), der im Klima-Panel als „Gäste da“ erscheint.
 
 Das Dashboard **zeigt und schaltet nur** diese Entitäten (Klima-Panel oben: Schalter, Rückkehrtermin, Schnellwahl). Was bei Abwesenheit passiert, etwa Heizung absenken und vor der Rückkehr vorheizen, gehört in deine eigenen Automationen in Home Assistant. So passt das Dashboard zu jeder Heizungslogik.
 

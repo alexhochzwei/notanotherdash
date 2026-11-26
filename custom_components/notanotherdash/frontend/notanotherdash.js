@@ -414,6 +414,7 @@ class NotAnotherDashPanel extends HTMLElement {
       hass: () => this._hass,
       toast: (text) => this._toast(text),
       showGraph: () => this._settings.show_graph !== false,
+      reg: () => this._reg || {},
       floorName: (id) => {
         const f = (this._reg && this._reg.floors ? this._reg.floors : []).filter((x) => x.floor_id === id)[0];
         return f ? f.name : "";
@@ -792,6 +793,7 @@ class NotAnotherDashPanel extends HTMLElement {
         '<div class="note">Das Dashboard zeigt und schaltet nur diese Entitäten. Was bei Abwesenheit passiert (Heizung absenken, vorheizen), regeln deine eigenen Automationen in Home Assistant.</div>' +
         '<div class="group">' +
         this._entRow("presence_entity", "Anwesenheit", "Zuhause = an / home / Personen in der Zone > 0. Schaltbar im Klima-Panel, wenn es ein Schalter (input_boolean) ist. Auch der Zeitplan des Saugers richtet sich danach.", (id) => PRES.indexOf(domainOf(id)) >= 0) +
+        this._entRow("guest_entity", "Gäste", "Schalter (input_boolean), der im Klima-Panel als „Gäste da“ erscheint. Was er bewirkt, regelt deine Automation.", (id) => ["input_boolean", "switch"].indexOf(domainOf(id)) >= 0) +
         this._entRow("return_entity", "Rückkehrtermin", "input_datetime mit Datum und Uhrzeit, z. B. zum rechtzeitigen Vorheizen", (id, s) => domainOf(id) === "input_datetime" && s.attributes.has_date && s.attributes.has_time) +
         "</div>";
     } else {

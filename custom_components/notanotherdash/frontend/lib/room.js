@@ -528,8 +528,64 @@ export class RoomView {
           );
         })
         .join("") +
+      this.standardsHtml() +
       this.sensorsHtml(roomSummary(this.room, states, Date.now()))
     );
+  }
+
+  /**
+   * Preset-Temperaturen der Thermostate als number-Entitäten (Versatile Thermostat legt sie an,
+   * z. B. number.heizung_bad_vt_preset_eco_temp). Gesucht wird am selben Gerät, sonst über den Namen.
+   */
+  presetNumbers(climateId) {
+    const states = this.hass.states;
+    const reg = (this.host.reg && this.host.reg()) || {};
+    const ents = reg.entities || [];
+    const own = ents.filter((e) => e.entity_id === climateId)[0];
+    const re = /_preset_([a-z]+)_temp$/;
+    let ids = own && own.device_id ? ents.filter((e) => e.device_id === own.device_id && e.entity_id.indexOf("number.") === 0 && !e.disabled_by).map((e) => e.entity_id) : [];
+    if (!ids.length) {
+      const prefix = "number." + climateId.split(".")[1] + "_preset_";
+      ids = Object.keys(states).filter((k) => k.indexOf(prefix) === 0);
+    }
+    const out = {};
+    ids.forEach((id) => {
+      const m = re.exec(id);
+      if (m && states[id] && isFinite(parseFloat(states[id].state))) out[m[1]] = id;
+    });
+    return out;
+  }
+
+  standardsHtml() {
+    const states = this.hass.states;
+    const order = ["comfort", "eco", "frost", "boost"];
+    const pend = this.numPending || (this.numPending = {});
+    const now = Date.now();
+    const blocks = this.room.climates
+      .map((cid) => {
+        const nums = this.presetNumbers(cid);
+        const keys = order.filter((k) => nums[k]).concat(Object.keys(nums).filter((k) => order.indexOf(k) < 0));
+        if (!keys.length) return "";
+        const active = (states[cid] && states[cid].attributes.preset_mode) || "";
+        const rows = keys
+          .map((k) => {
+            const id = nums[k];
+            const p = pend[id];
+            const cur = parseFloat(states[id].state);
+            if (p && (now > p.until || Math.abs(cur - p.v) < 0.01)) delete pend[id];
+            const v = pend[id] ? pend[id].v : cur;
+            return (
+              '<div class="drow std' + (active === k ? " act" : "") + '"><span>' + esc(PRESET_LABEL[k] || k) + (active === k ? ' <span class="cap">aktiv</span>' : "") + "</span>" +
+              '<span class="stdset"><button class="round sm" data-pnum="' + esc(id) + '|-1" aria-label="' + esc(PRESET_LABEL[k] || k) + ' kälter">' + icon("chevl") + "</button>" +
+              "<b>" + fmtNum(v, 1) + "°</b>" +
+              '<button class="round sm" data-pnum="' + esc(id) + '|1" aria-label="' + esc(PRESET_LABEL[k] || k) + ' wärmer">' + icon("chev") + "</button></span></div>"
+            );
+          })
+          .join("");
+        return (this.room.climates.length > 1 ? '<div class="cap">' + esc(shortName((states[cid] && states[cid].attributes.friendly_name) || cid, this.room.name)) + "</div>" : "") + rows;
+      })
+      .join("");
+    return blocks ? '<div class="dlabel">Standards (Preset-Temperaturen)</div><div class="stds">' + blocks + "</div>" : "";
   }
 
   bindDetail(q) {
@@ -567,6 +623,26 @@ export class RoomView {
     q("[data-dpreset]").forEach((b) => (b.onclick = () => {
       const v = b.getAttribute("data-dpreset").split("|");
       this.call("climate", "set_preset_mode", { entity_id: v[0], preset_mode: v[1] });
+    }));
+    q("[data-pnum]").forEach((b) => (b.onclick = () => {
+      const v = b.getAttribute("data-pnum").split("|");
+      const id = v[0];
+      const so = states[id];
+      if (!so) return;
+      const a = so.attributes;
+      const step = a.step || 0.5;
+      const pend = this.numPending || (this.numPending = {});
+      const base = pend[id] ? pend[id].v : parseFloat(so.state);
+      const t = snap(base + parseInt(v[1], 10) * step, step, a.min != null ? a.min : 5, a.max != null ? a.max : 30);
+      pend[id] = { v: t, until: Date.now() + 8000 };
+      this.render();
+      this.numTimer = this.numTimer || {};
+      clearTimeout(this.numTimer[id]);
+      // Mehrere Tipps zusammenfassen und einmal senden.
+      this.numTimer[id] = setTimeout(() => {
+        this.call("number", "set_value", { entity_id: id, value: t });
+        this.host.toast("Standard " + fmtNum(t, 1) + "°");
+      }, 700);
     }));
     q("[data-dstep]").forEach((b) => (b.onclick = () => {
       const v = b.getAttribute("data-dstep").split("|");

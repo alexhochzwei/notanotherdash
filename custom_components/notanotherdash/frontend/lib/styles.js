@@ -298,6 +298,7 @@ select.ent{margin-left:auto;max-width:340px;height:38px;padding:0 12px;border-ra
 .scene.pri{background:#5ec8a8;color:#10201b;border-color:transparent}
 .awaychip{display:inline-flex;align-items:center;gap:8px;align-self:center}
 .awaychip .ic{width:18px;height:18px}
+.awaychip.guests{background:rgba(94,200,168,.16);border-color:rgba(94,200,168,.5);color:#bdeedd}
 .awaychip.away{background:rgba(143,179,255,.16);border-color:rgba(143,179,255,.45);color:#cfdcff}
 .vset{display:flex;flex-direction:column;gap:12px}
 .vseg{display:flex;flex-direction:column;gap:6px}
@@ -372,6 +373,13 @@ select.ent{margin-left:auto;max-width:340px;height:38px;padding:0 12px;border-ra
 .dname{font-size:16px;font-weight:500}
 .dlabel{font-size:11px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--ink3);margin-top:4px}
 .modes.left{justify-content:flex-start}
+.stds{display:flex;flex-direction:column;gap:4px}
+.drow.std{min-height:44px}
+.drow.std.act > span:first-child{color:#ffb38a}
+.stdset{margin-left:auto;display:inline-flex;align-items:center;gap:10px}
+.stdset b{min-width:52px;text-align:center;font-weight:500;font-size:16px;font-variant-numeric:tabular-nums}
+.round.sm{width:36px;height:36px}
+.round.sm .ic{width:16px;height:16px}
 
 .lcolors{margin-left:auto;display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
 .lcol{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600}

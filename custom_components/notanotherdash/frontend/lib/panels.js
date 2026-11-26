@@ -66,7 +66,7 @@ export class ClimateView extends BaseView {
 
   watched() {
     const st = this.host.settings();
-    const extra = [st.presence_entity, st.return_entity].filter(Boolean);
+    const extra = [st.presence_entity, st.return_entity, st.guest_entity].filter(Boolean);
     return roomsWith(this.host.model(), "climates").reduce((a, r) => a.concat(r.climates, r.windows, r.tempSensor ? [r.tempSensor] : []), extra);
   }
 
@@ -78,6 +78,14 @@ export class ClimateView extends BaseView {
   // ---------- Abwesenheit ----------
   // Das Dashboard schaltet nur die eingestellten Entitäten (Anwesenheit, Rückkehrtermin).
   // Was daraus folgt (Absenken, Vorheizen), regeln die Automationen in Home Assistant.
+
+  guestChip() {
+    const st = this.host.settings();
+    const g = st.guest_entity ? this.hass.states[st.guest_entity] : null;
+    if (!g) return "";
+    const on = g.state === "on";
+    return '<button class="scene awaychip' + (on ? " guests" : "") + '" data-guests="1">' + icon("person") + (on ? "Gäste da" : "Keine Gäste") + "</button>";
+  }
 
   awayChip() {
     const st = this.host.settings();
@@ -138,6 +146,11 @@ export class ClimateView extends BaseView {
     const st = this.host.settings();
     const q = (s) => Array.prototype.slice.call(el.querySelectorAll(s));
     q("[data-away]").forEach((b) => (b.onclick = () => { this.away = true; this.render(); }));
+    q("[data-guests]").forEach((b) => (b.onclick = () => {
+      const on = b.classList.contains("guests");
+      this.call(domainOf(st.guest_entity), on ? "turn_off" : "turn_on", { entity_id: st.guest_entity });
+      this.host.toast(on ? "Keine Gäste" : "Gäste da");
+    }));
     if (!this.away) return;
     const close = () => { this.away = false; this.drag = null; this.render(); };
     q("[data-closeaway]").forEach((b) => (b.onclick = close));
@@ -223,6 +236,7 @@ export class ClimateView extends BaseView {
     el.innerHTML =
       '<div class="phead"><div><div class="ptitle">Klima</div><div class="cap">' + heating + " von " + rooms.length + " Räumen heizen</div></div>" +
       this.awayChip() +
+      this.guestChip() +
       (presets.length
         ? '<div class="pacts"><span class="cap">Alle:</span>' + presets.map((m) => '<button class="scene" data-allpreset="' + esc(m.value) + '">' + esc(m.label) + "</button>").join("") + "</div>"
         : "") +
