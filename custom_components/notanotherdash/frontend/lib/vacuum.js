@@ -34,6 +34,14 @@ const PARTS = {
   dock_cleaning_brush_time_left: "Reinigungsbürste der Station"
 };
 
+// Reset-Knöpfe der Roborock-Integration je Verschleißteil (Übersetzungsschlüssel).
+const RESETS = {
+  filter_time_left: "reset_air_filter_consumable",
+  main_brush_time_left: "reset_main_brush_consumable",
+  side_brush_time_left: "reset_side_brush_consumable",
+  sensor_time_left: "reset_sensor_consumable"
+};
+
 const DAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]; // Index wie Python weekday(): 0 = Montag
 
 function pad(n) {
@@ -291,17 +299,38 @@ export class VacuumView {
 
   // ---------- Wartung ----------
 
+  /** Reset-Knopf zum Sensor (gleiches Gerät, auch wenn in HA deaktiviert). */
+  resetButton(sensorId, key) {
+    const want = RESETS[key];
+    if (!want) return null;
+    const reg = this.host.reg();
+    const ent = (reg.entities || []).filter((e) => e.entity_id === sensorId)[0];
+    if (!ent || !ent.device_id) return null;
+    const b = (reg.entities || []).filter((e) => e.device_id === ent.device_id && e.translation_key === want)[0];
+    return b ? { id: b.entity_id, disabled: !!b.disabled_by || !this.hass.states[b.entity_id] } : null;
+  }
+
   maintSheet(parts, robotName) {
+    let hint = false;
     const rows = parts
       .map((s) => {
         const h = hoursLeft(s);
         const txt = h == null ? "–" : h <= 0 ? "jetzt tauschen" : h >= 48 ? fmtNum(h / 24, 0) + " Tage" : fmtNum(h, 0) + " Std.";
+        const b = this.resetButton(s.id, s.key);
+        if (b && b.disabled) hint = true;
+        const ask = b && this.confirmReset === b.id;
         return (
-          '<div class="row"><div class="t">' + esc(PARTS[s.key] || shortName(s.attributes.friendly_name || s.id, robotName)) + '</div><span class="mval' + (h != null && h < 10 ? " low" : "") + '">' + txt + "</span></div>"
+          '<div class="row"><div class="t">' + esc(PARTS[s.key] || shortName(s.attributes.friendly_name || s.id, robotName)) + '</div><span class="mval' + (h != null && h < 10 ? " low" : "") + '">' + txt + "</span>" +
+          (b && !b.disabled ? '<button class="scene sm' + (ask ? " warn" : "") + '" data-reset="' + esc(b.id) + '">' + (ask ? "Wirklich zurücksetzen?" : "Zurücksetzen") + "</button>" : "") +
+          "</div>"
         );
       })
       .join("");
-    return this.sheetShell("Wartung", '<div class="group">' + rows + '</div><div class="note">Restlaufzeit der Verschleißteile. Nach dem Tausch in der Roborock-App zurücksetzen.</div>');
+    return this.sheetShell(
+      "Wartung",
+      '<div class="group">' + rows + '</div><div class="note">Restlaufzeit der Verschleißteile. Nach dem Tausch zurücksetzen; zur Sicherheit zweimal tippen.' +
+        (hint ? " Einige Reset-Knöpfe sind in Home Assistant deaktiviert; unter Geräte → Saugroboter aktivieren." : "") + "</div>"
+    );
   }
 
   sheetShell(title, body, foot) {
@@ -496,6 +525,22 @@ export class VacuumView {
     const ov = el.querySelector(".edetail");
     if (ov) ov.addEventListener("click", (e) => { if (e.target === ov) closeSheet(); });
     if (this.sheet === "plan") this.bindPlan();
+    q("[data-reset]").forEach((b) => (b.onclick = () => {
+      const bid = b.getAttribute("data-reset");
+      clearTimeout(this.confirmTimer);
+      if (this.confirmReset !== bid) {
+        this.confirmReset = bid;
+        this.confirmTimer = setTimeout(() => {
+          this.confirmReset = null;
+          this.render();
+        }, 4000);
+      } else {
+        this.confirmReset = null;
+        this.call("button", "press", { entity_id: bid });
+        this.host.toast("Zurückgesetzt");
+      }
+      this.render();
+    }));
     q("[data-seg]").forEach((b) => (b.onclick = () => {
       const k = b.getAttribute("data-seg");
       this.selected[k] = !this.selected[k];

@@ -10,7 +10,7 @@ Aufbau und Ideen angelehnt an [HausPanel](https://github.com/alpacalabs-de/hausp
 - **Raumansicht** (Raumkachel antippen): Szenen, Heizung mit Drehrad (Ziehen nach rechts = wärmer, gesendet beim Loslassen), Presets, einzelne Heizkörper, 24-h-Temperaturverlauf; Lichter (Tippen schaltet, seitlich Wischen dimmt); Rollläden hochkant (Ziehen stellt die Position ein, Gruppe antippen zeigt die einzelnen).
 
 - **Energie:** Gas pro Tag mit erwartetem Verbrauch aus der Außentemperatur (Heizgradtage, Ausgleichsgerade über die letzten 30 Tage), Monatssumme mit Abweichung, Prognose für 7 Tage aus der Wettervorhersage, Strom heute je Stunde und aktuelle Leistung. Daten aus den Langzeitstatistiken des Recorders.
-- **Sauger:** Status, Start/Pause/Station, Raumauswahl auf der Karte (passt sich der Bildschirmhöhe an), Saugkraft, Wisch-Einstellungen (Select-Entitäten des Geräts), Wartung (Restlaufzeiten der Verschleißteile, Schlüssel-Symbol, oranger Punkt wenn fällig) und Zeitplan.
+- **Sauger:** Status, Start/Pause/Station, Raumauswahl auf der Karte (passt sich der Bildschirmhöhe an), Saugkraft, Wisch-Einstellungen (Select-Entitäten des Geräts), Wartung (Restlaufzeiten der Verschleißteile, Schlüssel-Symbol, oranger Punkt wenn fällig; Zurücksetzen per Doppeltipp über die Reset-Knöpfe der Roborock-Integration, die in HA aktiviert sein müssen) und Zeitplan.
 
 - **Klima:** alle Räume mit Ist- und Solltemperatur, Status und Presets für alle Räume auf einmal; oben Anwesenheit mit Rückkehrtermin (siehe unten).
 - **Licht:** alle Lichter nach Räumen (Tippen schaltet, Wischen dimmt), „Alle aus“.

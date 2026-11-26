@@ -293,6 +293,8 @@ select.ent{margin-left:auto;max-width:340px;height:38px;padding:0 12px;border-ra
 .mval{margin-left:auto;font-size:14px;font-variant-numeric:tabular-nums;color:rgba(245,238,233,.8)}
 .mval.low{color:#e0a03a}
 .scene.sm{height:32px;padding:0 12px;font-size:13px}
+.mval + .scene{margin-left:14px}
+.scene.warn{background:rgba(224,160,58,.2);border-color:rgba(224,160,58,.6);color:#f3cf8e}
 .scene.pri{background:#5ec8a8;color:#10201b;border-color:transparent}
 .awaychip{display:inline-flex;align-items:center;gap:8px;align-self:center}
 .awaychip .ic{width:18px;height:18px}
