@@ -34,6 +34,9 @@ const PARTS = {
   dock_cleaning_brush_time_left: "Reinigungsbürste der Station"
 };
 
+// Teile, die bei Ablauf gereinigt statt getauscht werden.
+const CLEAN_ONLY = { sensor_time_left: true };
+
 // Reset-Knöpfe der Roborock-Integration je Verschleißteil (Übersetzungsschlüssel).
 const RESETS = {
   filter_time_left: "reset_air_filter_consumable",
@@ -315,7 +318,7 @@ export class VacuumView {
     const rows = parts
       .map((s) => {
         const h = hoursLeft(s);
-        const txt = h == null ? "–" : h <= 0 ? "jetzt tauschen" : h >= 48 ? fmtNum(h / 24, 0) + " Tage" : fmtNum(h, 0) + " Std.";
+        const txt = h == null ? "–" : h <= 0 ? (CLEAN_ONLY[s.key] ? "jetzt reinigen" : "jetzt tauschen") : h >= 48 ? fmtNum(h / 24, 0) + " Tage" : fmtNum(h, 0) + " Std.";
         const b = this.resetButton(s.id, s.key);
         if (b && b.disabled) hint = true;
         const ask = b && this.confirmReset === b.id;
@@ -578,7 +581,10 @@ export class VacuumView {
 
   /** Karte mit antippbaren Räumen: Raumnamen sitzen auf der Mitte ihres Umrisses. */
   mapHtml(mapState, segs) {
-    const url = mapState.attributes.entity_picture;
+    // Die Bild-URL (Token) bleibt gleich, wenn sich die Karte ändert; der Zustand (Zeitpunkt der
+    // letzten Aktualisierung) hängt daher als Parameter dran, sonst zeigt der Browser das Bild aus dem Cache.
+    const pic = mapState.attributes.entity_picture;
+    const url = pic + (pic.indexOf("?") >= 0 ? "&" : "?") + "v=" + encodeURIComponent(mapState.state || "");
     const tf = calibrate(mapState.attributes.calibration_points);
     const size = this.imgSize;
     const boxes = segs.filter((g) => g.box);
